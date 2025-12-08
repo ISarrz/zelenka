@@ -1,7 +1,6 @@
 import socket
 import datetime as dt
 import pytz
-from orca.orca_state import device
 
 from database.database.database import DB
 
