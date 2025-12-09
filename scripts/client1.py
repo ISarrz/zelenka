@@ -1,9 +1,9 @@
 import socket
 import time
 
-SERVER_HOST = '94.29.24.225'  # Замените на IP вашего сервера
-SERVER_PORT = 4500  # Порт TCP
-SEND_INTERVAL_SECONDS = 5  # Интервал отправки в секундах
+SERVER_HOST = '212.193.4.46'
+SERVER_PORT = 4500
+SEND_INTERVAL_SECONDS = 5
 DATA_TO_SEND = "hello"
 BUFFER_SIZE = 4096
 
@@ -16,22 +16,11 @@ def run_client():
         print(f"Попытка подключения к {SERVER_HOST}:{SERVER_PORT}...")
         client_socket.connect((SERVER_HOST, SERVER_PORT))
         print("Соединение успешно установлено. Начинаем постоянную отправку.")
-
-
         while True:
-
             data_bytes = DATA_TO_SEND.encode('utf-8')
-
-            # --- ОТПРАВКА ДАННЫХ ---
             client_socket.sendall(data_bytes)
             print(f"[{time.strftime('%H:%M:%S')}] Отправлено {len(data_bytes)} байт.")
-
-
             client_socket.settimeout(2)
-
-
-
-
             time.sleep(SEND_INTERVAL_SECONDS)
 
     except socket.error as e:

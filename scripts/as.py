@@ -20,9 +20,7 @@ async def handle_client(reader, writer):
     print(f"Connected by {addr} (Async)")
 
     try:
-        # Цикл для непрерывного приема данных от текущего клиента
         while True:
-            # Асинхронно ждем данные
             data = await reader.read(1024)
 
             if not data:
@@ -38,34 +36,23 @@ async def handle_client(reader, writer):
 
             inf = received_message.split(" ")
             date = dt.datetime.now(moscow_timezone).strftime("%d.%m.%Y %H:%M:%S")
-
-            try:
-                # 1. Запись данных в БД
-                # В этом месте ваш код может заблокироваться,
-                # если DB.insert_one не асинхронный.
-                DB.insert_one(DB.sensor_readings_table_name,
-                              device_id=inf[0],
-                              datatime=date,
-                              temperature=inf[1],
-                              humidity=inf[2],
-                              pressure=inf[3],
-                              hydration=inf[4],
-                              waterlevel=inf[5],
-                              )
-
-                # 2. Формирование ответа
-                response_message = f"ACK_OK: Data for device {inf[0]} received and saved at {date}"
-
-            except Exception as db_e:
-                print(f"Database Error for {addr}: {db_e}")
-                traceback.print_exc()
-                response_message = f"NACK_ERROR: Database insertion failed."
+            print(received_message)
+            # try:
+            #
+            #
+            #     # 2. Формирование ответа
+            #     response_message = f"ACK_OK: Data for device {inf[0]} received and saved at {date}"
+            #
+            # except Exception as db_e:
+            #     print(f"Database Error for {addr}: {db_e}")
+            #     traceback.print_exc()
+            #     response_message = f"NACK_ERROR: Database insertion failed."
 
             # --- Отправка ответа клиенту ---
-            writer.write(response_message.encode("utf-8") + b'\n')
+            # writer.write(response_message.encode("utf-8") + b'\n')
             # Асинхронно ждем, пока данные будут отправлены
-            await writer.drain()
-            print(f"Sent response to {addr}: {response_message}")
+            # await writer.drain()
+            # print(f"Sent response to {addr}: {response_message}")
 
     except ConnectionResetError:
         print(f"Client {addr} disconnected unexpectedly.")
