@@ -1,12 +1,15 @@
 import sqlite3
 
-from config.paths import database_path, database_dump_path
+from modules.config.paths import database_path, database_dump_path
 import re
 import os
 
 
 class DB:
     sensor_readings_table_name = "sensor_readings"
+    users_table_name = "users"
+    users_devices_table_name = "users_devices"
+    devices_table_name = "devices"
 
 
 
@@ -155,6 +158,9 @@ class DB:
     def initialize():
         try:
             DB._create_sensor_readings_table()
+            DB._create_devices_table()
+            DB._create_users_table()
+            DB._create_users_devices_table()
 
         except Exception:
             print("Database initialization failed")
@@ -171,13 +177,52 @@ class DB:
                         CREATE TABLE IF NOT EXISTS sensor_readings
                         (
                             id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                            device_id INTEGER,
-                            datatime TEXT,
+                            device_id INTEGER REFERENCES devices,
+                            datetime TEXT,
                             temperature FLOAT,
                             humidity FLOAT,
                             pressure FLOAT,
                             hydration FLOAT,
                             waterlevel FLOAT
+                        )""")
+
+    @staticmethod
+    def _create_users_table():
+        with sqlite3.connect(database_path) as conn:
+            cur = conn.cursor()
+
+            cur.execute("""
+                        CREATE TABLE IF NOT EXISTS users
+                        (
+                            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                            login   TEXT,
+                            email    TEXT,
+                            password TEXT
+                        )""")
+
+    @staticmethod
+    def _create_users_devices_table():
+        with sqlite3.connect(database_path) as conn:
+            cur = conn.cursor()
+
+            cur.execute("""
+                        CREATE TABLE IF NOT EXISTS users_devices
+                        (
+                            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id Integer REFERENCES users,
+                            device_id INTEGER REFERENCES devices
+                        )""")
+
+    @staticmethod
+    def _create_devices_table():
+        with sqlite3.connect(database_path) as conn:
+            cur = conn.cursor()
+
+            cur.execute("""
+                        CREATE TABLE IF NOT EXISTS devices
+                        (
+                            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                            serial_number   TEXT
                         )""")
 
 
