@@ -1,0 +1,16 @@
+# Secrets — must never be committed
+ssh.txt
+**/.env
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Build artifacts
+**/build/
+**/cmake-build-*/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
