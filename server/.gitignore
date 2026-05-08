@@ -1,0 +1,7 @@
+/data/config.json
+.devcontainer
+.vscode
+build
+.env
+.idea
+.devcontainer

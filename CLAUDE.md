@@ -4,17 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository layout
 
-This directory holds **two independent projects**, each with its own `.git`:
+Monorepo with two subprojects on the same `main` branch:
 
-- `zelenka/` — Flutter mobile app (the client).
-- `zelenka_server/` — C++20 HTTP backend serving `http://zelenka-api.ru` on port 80.
+- `app/` — Flutter mobile app (the client).
+- `server/` — C++20 HTTP backend serving `http://zelenka-api.ru` on port 80.
+- `tests/` — cross-cutting test utilities (e.g. sensor data simulator) when present.
 
-They are not built or versioned together. `cd` into the relevant subdirectory before running build/test commands.
+They build and version together but have independent toolchains. `cd` into the relevant subdirectory before running build/test commands.
 
-## zelenka/ — Flutter app
+The two original repositories `github.com/ISarrz/zelenka` and `github.com/ISarrz/zelenka_server` are now archival — all new work lands in this monorepo.
+
+## app/ — Flutter app
 
 ### Common commands
-Run from `zelenka/`:
+Run from `app/`:
 - `flutter pub get` — install deps.
 - `flutter run` — run on the connected device/emulator.
 - `flutter test` — run the test suite (`test/widget_test.dart`).
@@ -31,10 +34,10 @@ Run from `zelenka/`:
 - **Networking:** All HTTP goes through `lib/repositories/user/user_repository.dart` against `http://zelenka-api.ru`. Endpoints: `/user/auth`, `/user/register`, `/user/insert-device`, `/user/get-devices`, `/user/get-device-monitorings`, `/user/remove-device`. Auth is "send login+password with every request" — there is no token.
 - **BLE:** `flutter_blue_plus` + `permission_handler` for the `ble_config_page` flow that provisions devices.
 
-## zelenka_server/ — C++ backend
+## server/ — C++ backend
 
 ### Common commands
-Run from `zelenka_server/`:
+Run from `server/`:
 - `docker compose up --build` — preferred path. Brings up a MySQL 8 container and the app container together; `.env` (in this directory) supplies DB and API secrets, and the app container reads them as environment variables. The app listens on host port 80.
 - Local CMake build (requires `libmysqlcppconn-dev`, `nlohmann-json3-dev`, C++20 toolchain):
   ```
@@ -60,4 +63,5 @@ Run from `zelenka_server/`:
 `CMakeLists.txt` enumerates every source file by hand. After adding a new non-admin `.cpp`, you must add it to the `add_executable` list or it won't be compiled. (See the admin-routes note above for the exception.)
 
 ## Secrets
-`zelenka_server/.env` is checked in and contains real-looking DB and API credentials. Do not paste it into commits, PR descriptions, or external systems; treat it as sensitive even though git already tracks it.
+- `server/.env` contains real-looking DB and API credentials. The root `.gitignore` excludes `**/.env`, so it is **not** tracked in the monorepo (a clean break from the old `zelenka_server` repo where it was committed). Re-create it locally from `server/.env.example` if one is added later.
+- `ssh.txt` at the repo root holds prod root SSH credentials. Also gitignored. Never paste either into commits, PR bodies, or external systems.
