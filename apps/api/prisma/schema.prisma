@@ -1,0 +1,79 @@
+// Sprint 0 schema. Intentionally minimal:
+//   - users + magic-link auth
+//   - devices owned by users
+//   - measurements (single row per sensor sample, all numeric fields nullable
+//     so the firmware can grow into them without a migration each time)
+// Plants, care rules, notifications, push subscriptions land in later sprints.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  magicLinks MagicLinkToken[]
+  sessions   Session[]
+  devices    Device[]
+}
+
+model MagicLinkToken {
+  id         String    @id @default(uuid())
+  token      String    @unique
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Device {
+  id          String   @id @default(uuid())
+  name        String
+  deviceToken String   @unique
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  measurements Measurement[]
+
+  @@index([userId])
+}
+
+model Measurement {
+  id         String   @id @default(uuid())
+  deviceId   String
+  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  measuredAt DateTime
+  createdAt  DateTime @default(now())
+
+  // All numeric fields nullable so firmware can omit what isn't supported yet.
+  temperatureC    Float?
+  humidityPct     Float?
+  pressureHpa     Float?
+  lux             Float?
+  soilMoistureRaw Int?
+  soilMoisturePct Float?
+
+  @@index([deviceId, measuredAt])
+}
