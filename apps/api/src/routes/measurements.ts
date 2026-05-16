@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireDevice } from '../lib/auth.js';
+import { detectAutoEvents } from '../lib/care_events.js';
 import { evaluatePushTriggers } from '../lib/rules.js';
 import type { CareThresholds } from '../lib/thresholds.js';
 import { GENERIC_THRESHOLDS } from '../lib/thresholds.js';
@@ -117,6 +118,14 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
       await prisma.plant.update({
         where: { id: plant.id },
         data: { lastRingStatus: verdict.ring },
+      });
+
+      // Auto-detect care events (currently: watering via soil-moisture drop).
+      await detectAutoEvents({
+        plantId: plant.id,
+        prevSoilRaw: prevMeasurement?.soilMoistureRaw ?? null,
+        newSoilRaw: last.soilMoistureRaw ?? null,
+        occurredAt: measuredAt,
       });
     }
 

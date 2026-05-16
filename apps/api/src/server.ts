@@ -5,6 +5,7 @@ import Fastify from 'fastify';
 import { config, isProd } from './config.js';
 import { authRoutes } from './routes/auth.js';
 import { deviceRoutes } from './routes/devices.js';
+import { eventRoutes } from './routes/events.js';
 import { firmwareRoutes } from './routes/firmware.js';
 import { healthRoutes } from './routes/health.js';
 import { measurementRoutes } from './routes/measurements.js';
@@ -33,6 +34,7 @@ await app.register(authRoutes);
 await app.register(deviceRoutes);
 await app.register(measurementRoutes);
 await app.register(plantRoutes);
+await app.register(eventRoutes);
 await app.register(firmwareRoutes);
 await app.register(pushRoutes);
 

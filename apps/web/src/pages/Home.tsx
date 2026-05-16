@@ -92,6 +92,14 @@ export function HomePage() {
         {subtitle && (
           <p className="text-sm text-neutral-500 italic">{subtitle}</p>
         )}
+        {device && (
+          <button
+            onClick={() => navigate(`/devices/${device.id}`)}
+            className="mt-1 text-xs text-status-ok underline"
+          >
+            Графики и журнал →
+          </button>
+        )}
       </div>
 
       {!plant && device && (

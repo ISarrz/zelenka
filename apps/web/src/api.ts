@@ -146,4 +146,27 @@ export const api = {
     }),
   pushTest: () =>
     request<{ delivered: number; removed: number }>('/push/test', { method: 'POST' }),
+  measurements: (deviceId: string, days: number) =>
+    request<{ samples: Measurement[]; downsampled: boolean }>(
+      `/devices/${deviceId}/measurements?days=${days}`,
+    ),
+  events: (plantId: string) =>
+    request<{ events: CareEvent[] }>(`/plants/${plantId}/events`),
+  addEvent: (plantId: string, body: { kind: CareEvent['kind']; occurredAt?: string; note?: string | null }) =>
+    request<{ event: CareEvent }>(`/plants/${plantId}/events`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  deleteEvent: (plantId: string, eventId: string) =>
+    request<{ status: string }>(`/plants/${plantId}/events/${eventId}`, {
+      method: 'DELETE',
+    }),
 };
+
+export interface CareEvent {
+  id: string;
+  kind: 'water' | 'fertilize' | 'repot' | 'moved' | 'other';
+  occurredAt: string;
+  note: string | null;
+  source: 'auto' | 'manual';
+}

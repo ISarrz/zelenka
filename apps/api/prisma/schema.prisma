@@ -110,7 +110,25 @@ model Plant {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  events CareEvent[]
+
   @@index([userId])
+}
+
+// One care action — automatically detected from the sensor (e.g. a watering
+// shows up as a sudden soil-moisture drop) or entered manually by the user.
+// Rendered as a marker on the plant's charts and as an entry in the feed.
+model CareEvent {
+  id         String   @id @default(uuid())
+  plantId    String
+  plant      Plant    @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  kind       String   // "water" | "fertilize" | "repot" | "moved" | "other"
+  occurredAt DateTime
+  note       String?
+  source     String   @default("manual") // "manual" | "auto"
+  createdAt  DateTime @default(now())
+
+  @@index([plantId, occurredAt])
 }
 
 // Web Push subscription per browser/device. Multiple per user (e.g. iPhone +
