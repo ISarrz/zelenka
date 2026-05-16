@@ -26,3 +26,7 @@ infra/perenual-seed/*.sql
 # OTA firmware binaries — published via infra/firmware-publish.sh
 infra/firmware-releases/*.bin
 infra/firmware-releases/manifest.json
+
+# Resend API key
+resend_key.txt
+resend_key*.txt
