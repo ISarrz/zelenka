@@ -155,13 +155,25 @@ idf.py build flash monitor
   app, 1 MB spiffs reserve). HTTPS cert bundle pushes the image
   past the stock 1 MB partition.
 
-### Sprint 2 limits (still deferred)
+### Sprint 3 firmware additions
 
-- No OTA — re-flash via USB-C only. Sprint 3.
-- No LittleFS fallback when offline beyond one cycle — buffer is held
-  in RTC RAM and overwrites on overflow (rare; covers ~hour of outage).
-- Battery not measured. Server-side `battery_estimate` is unused until
-  hardware ships. Sprint 3 or whenever the hardware path is ready.
+- **OTA over HTTPS**. Dual-bank partitions (`ota_0` / `ota_1` + `otadata`).
+  Every successful batch POST is followed by a fetch of
+  `/api/firmware/manifest.json`. If `version` differs from the running
+  `app_desc.version`, `esp_https_ota` downloads and applies the bundle,
+  then reboots. The first fully-successful cycle on a new image cancels
+  the pending rollback; if that cycle fails, the bootloader reverts to
+  the previous bank automatically.
+- **Versioning**: `CONFIG_APP_PROJECT_VER` in `sdkconfig.defaults`. Bump
+  + rebuild + `infra/firmware-publish.sh` + rsync to server. Devices
+  pick up the update on their next cycle without USB access.
+
+### Still deferred (Sprint 4+)
+
+- LittleFS spill-over for prolonged offline. RTC RAM holds the current
+  hour of samples; longer outages still drop old data on overflow.
+- Battery measurement. Server-side `battery_estimate` field will be
+  populated once a hardware divider or fuel gauge is added.
 
 ## infra/ — the stack
 
