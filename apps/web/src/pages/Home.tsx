@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, type Device, type Measurement, type User } from '../api';
+import {
+  api,
+  type Device,
+  type Measurement,
+  type Plant,
+  type RingStatus,
+  type Severity,
+  type User,
+  type Verdict,
+} from '../api';
 
 type Status = 'loading' | 'unauth' | 'no-device' | 'no-data' | 'ready';
 
@@ -9,7 +18,9 @@ export function HomePage() {
   const [status, setStatus] = useState<Status>('loading');
   const [, setUser] = useState<User | null>(null);
   const [device, setDevice] = useState<Device | null>(null);
+  const [plant, setPlant] = useState<Plant | null>(null);
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
+  const [verdict, setVerdict] = useState<Verdict | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,7 +39,9 @@ export function HomePage() {
         setDevice(d);
         const latest = await api.latestMeasurement(d.id);
         if (cancelled) return;
+        setPlant(latest.plant);
         setMeasurement(latest.measurement);
+        setVerdict(latest.verdict);
         setStatus(latest.measurement ? 'ready' : 'no-data');
       } catch (err) {
         const code = (err as { status?: number }).status;
@@ -59,45 +72,99 @@ export function HomePage() {
     return <NoDevicePrompt onCreated={(d) => { setDevice(d); setStatus('no-data'); }} />;
   }
 
+  const ringStatus: RingStatus = verdict?.ring ?? 'cold';
+  const title = plant?.name ?? device?.name ?? 'Растение';
+  const subtitle = plant?.species?.commonNameRu
+    ?? plant?.species?.commonNameEn
+    ?? plant?.species?.scientificName
+    ?? (plant ? 'общий профиль' : null);
+
   return (
     <main className="min-h-full flex flex-col items-center justify-center p-6 gap-6">
-      <Ring />
-      <h1 className="text-xl font-semibold">{device?.name ?? 'Растение'}</h1>
-      <Grid m={measurement} />
+      <Ring status={ringStatus} />
+      <div className="text-center">
+        <h1 className="text-xl font-semibold">{title}</h1>
+        {subtitle && (
+          <p className="text-sm text-neutral-500 italic">{subtitle}</p>
+        )}
+      </div>
+
+      {!plant && device && (
+        <button
+          onClick={() => navigate(`/devices/${device.id}/identify`)}
+          className="rounded-full bg-status-ok text-white px-5 py-2 text-sm font-medium"
+        >
+          Опознать растение
+        </button>
+      )}
+
+      <Grid m={measurement} v={verdict} />
+
       {status === 'no-data' && (
-        <p className="text-sm text-neutral-500">
-          Датчик ещё не присылал данные. Token:{' '}
-          <code className="select-all">{device?.deviceToken}</code>
+        <p className="text-sm text-neutral-500 text-center max-w-sm">
+          Датчик ещё не присылал данные. Токен:&nbsp;
+          <code className="select-all break-all">{device?.deviceToken}</code>
         </p>
       )}
     </main>
   );
 }
 
-function Ring() {
-  // Sprint 0 placeholder — dashed cold-start ring.
+function Ring({ status }: { status: RingStatus }) {
+  const styles: Record<RingStatus, string> = {
+    cold:  'border-status-cold border-dashed',
+    ok:    'border-status-ok',
+    warn:  'border-status-warn',
+    alert: 'border-status-alert',
+  };
+  const labels: Record<RingStatus, string> = {
+    cold:  'подождите 48 часов',
+    ok:    'всё хорошо',
+    warn:  'присмотритесь',
+    alert: 'нужно действие',
+  };
   return (
-    <div className="relative w-44 h-44 rounded-full border-[10px] border-dashed border-status-cold flex items-center justify-center">
-      <span className="text-status-cold text-sm">подождите 48 часов</span>
+    <div
+      className={`relative w-44 h-44 rounded-full border-[10px] flex items-center justify-center ${styles[status]}`}
+    >
+      <span className="text-sm text-neutral-500">{labels[status]}</span>
     </div>
   );
 }
 
-function Grid({ m }: { m: Measurement | null }) {
+function Grid({ m, v }: { m: Measurement | null; v: Verdict | null }) {
   return (
     <div className="grid grid-cols-2 gap-3 w-full max-w-md">
-      <Cell label="Темп." value={m?.temperatureC} unit="°C" />
-      <Cell label="Влажность" value={m?.humidityPct} unit="%" />
-      <Cell label="Свет" value={m?.lux} unit="lx" />
-      <Cell label="Почва" value={m?.soilMoisturePct ?? m?.soilMoistureRaw} unit={m?.soilMoisturePct == null ? 'raw' : '%'} />
+      <Cell label="Темп." value={m?.temperatureC} unit="°C" sev={v?.perParam.temperatureC} />
+      <Cell label="Влажность" value={m?.humidityPct} unit="%" sev={v?.perParam.humidityPct} />
+      <Cell label="Свет" value={m?.lux} unit="lx" sev={v?.perParam.lux} />
+      <Cell
+        label="Почва"
+        value={m?.soilMoisturePct ?? m?.soilMoistureRaw}
+        unit={m?.soilMoisturePct == null ? 'raw' : '%'}
+        sev={v?.perParam.soilMoistureRaw}
+      />
     </div>
   );
 }
 
-function Cell({ label, value, unit }: { label: string; value: number | null | undefined; unit: string }) {
-  const display = value == null ? '—' : Number.isInteger(value) ? value.toString() : value.toFixed(1);
+function Cell({
+  label, value, unit, sev,
+}: {
+  label: string; value: number | null | undefined; unit: string; sev: Severity | undefined;
+}) {
+  const display = value == null
+    ? '—'
+    : Number.isInteger(value) ? value.toString() : value.toFixed(1);
+  const borderClass = sev === 'alert'
+    ? 'border-status-alert'
+    : sev === 'warn'
+    ? 'border-status-warn'
+    : sev === 'ok'
+    ? 'border-status-ok/40'
+    : 'border-neutral-200 dark:border-neutral-800';
   return (
-    <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4">
+    <div className={`rounded-2xl border-2 p-4 ${borderClass}`}>
       <div className="text-sm text-neutral-500">{label}</div>
       <div className="mt-1 text-2xl font-semibold tabular-nums">
         {display}
