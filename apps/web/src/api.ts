@@ -9,11 +9,14 @@ const base = '/api';
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const isFormData = init.body instanceof FormData;
+  // Only declare JSON content-type when we actually carry a JSON body —
+  // Fastify rejects 'application/json' with an empty body as a 400.
+  const hasJsonBody = init.body != null && !isFormData;
   const res = await fetch(`${base}${path}`, {
     ...init,
     credentials: 'include',
     headers: {
-      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(hasJsonBody ? { 'Content-Type': 'application/json' } : {}),
       ...(init.headers ?? {}),
     },
   });
