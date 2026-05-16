@@ -32,6 +32,16 @@ interface PlantCtx {
   // Most recent measurement *before* this one — used for sharp-change detection.
   prevTemperatureC: number | null;
   prevMeasuredAt: Date | null;
+  // Last ~3 measurements (oldest first), including the new one as the last
+  // entry. Used by isImprovingTrend() to suppress pushes when the value is
+  // already moving back toward normal — "учёт тренда" from the design doc.
+  recentTrend: TrendSample[];
+}
+
+export interface TrendSample {
+  temperatureC: number | null;
+  humidityPct: number | null;
+  soilMoistureRaw: number | null;
 }
 
 interface MeasurementCtx {
@@ -107,6 +117,41 @@ function detectTriggers(plant: PlantCtx, m: MeasurementCtx, newVerdict: Verdict)
   return out;
 }
 
+// True if the parameter we're about to push about is already trending toward
+// the comfort range. We need at least two prior samples to call it a trend.
+// Soil is inverted: high raw value = drier, so "improving" means values
+// decreasing.
+function isImprovingTrend(kind: TriggerKind, plant: PlantCtx): boolean {
+  const trend = plant.recentTrend;
+  if (trend.length < 3) return false;
+  const first = trend[0];
+  const last  = trend[trend.length - 1];
+
+  switch (kind) {
+    case 'soil_orange':
+    case 'soil_red': {
+      const a = first.soilMoistureRaw, b = last.soilMoistureRaw;
+      if (a == null || b == null) return false;
+      // Need a meaningful drop, not noise. 5% of the dry threshold ≈ ~140
+      // units on our calibration — well above sensor jitter (~30-50).
+      const minDelta = (plant.thresholds.soilMoistureRaw?.dry ?? 2800) * 0.05;
+      return (a - b) >= minDelta;
+    }
+    case 'temp_orange':
+    case 'temp_red': {
+      const a = first.temperatureC, b = last.temperatureC;
+      const band = plant.thresholds.temperatureC;
+      if (a == null || b == null || !band) return false;
+      const optimum = (band.okMin + band.okMax) / 2;
+      // Closer to optimum than before, and the change is at least 0.3°C
+      // (above BME280 noise).
+      return Math.abs(b - optimum) < Math.abs(a - optimum) - 0.3;
+    }
+    default:
+      return false;
+  }
+}
+
 async function shouldSuppress(
   plant: PlantCtx,
   kind: TriggerKind,
@@ -114,6 +159,7 @@ async function shouldSuppress(
   quiet: QuietHours,
 ): Promise<string | null> {
   if (inQuietHours(now, quiet)) return 'quiet_hours';
+  if (isImprovingTrend(kind, plant)) return 'trending';
 
   // Cooldown — same kind in last 12 h?
   const cooldownSince = new Date(now.getTime() - COOLDOWN_MS);

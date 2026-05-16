@@ -85,10 +85,24 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
         plant.identifiedAt,
       );
 
-      // Pull the previous-but-one measurement for sharp-change detection.
-      const prevMeasurement = await prisma.measurement.findFirst({
+      // Pull a small trailing window of measurements: the immediately-prior
+      // one feeds sharp-change detection, and the last 2 (plus the new
+      // sample) feed the trend check that gates repeat pushes.
+      const trailing = await prisma.measurement.findMany({
         where: { deviceId: device.id, measuredAt: { lt: measuredAt } },
         orderBy: { measuredAt: 'desc' },
+        take: 2,
+      });
+      const prevMeasurement = trailing[0] ?? null;
+      const trend = [...trailing].reverse().map((m) => ({
+        temperatureC: m.temperatureC,
+        humidityPct: m.humidityPct,
+        soilMoistureRaw: m.soilMoistureRaw,
+      }));
+      trend.push({
+        temperatureC: last.temperatureC ?? null,
+        humidityPct: last.humidityPct ?? null,
+        soilMoistureRaw: last.soilMoistureRaw ?? null,
       });
 
       await evaluatePushTriggers({
@@ -100,6 +114,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
           prevRingStatus: (plant.lastRingStatus as RingStatus | null) ?? null,
           prevTemperatureC: prevMeasurement?.temperatureC ?? null,
           prevMeasuredAt: prevMeasurement?.measuredAt ?? null,
+          recentTrend: trend,
         },
         measurement: {
           temperatureC: last.temperatureC ?? null,
