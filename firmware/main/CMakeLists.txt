@@ -14,4 +14,6 @@ idf_component_register(
         esp_adc
         driver
         json
+        esp-tls
+        mbedtls
 )

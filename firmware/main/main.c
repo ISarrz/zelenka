@@ -59,9 +59,15 @@ void app_main(void) {
         sensor_reading_t r = {0};
         sensors_read(&r);
         ESP_LOGI(TAG,
-                 "sample: t=%.2fC h=%.2f%% p=%.2fhPa lux=%.2f soil_raw=%d",
+                 "sample: bme=%d bh=%d soil=%d | t=%.2fC h=%.2f%% p=%.2fhPa lux=%.2f soil_raw=%d",
+                 r.has_bme280, r.has_bh1750, r.has_soil,
                  r.temperature_c, r.humidity_pct, r.pressure_hpa, r.lux,
                  r.soil_moisture_raw);
+        if (!r.has_bme280 || !r.has_bh1750) {
+            // re-scan to make the cause visible in the running log
+            extern void sensors_debug_scan(void);
+            sensors_debug_scan();
+        }
 
         zelenka_led_set(ZELENKA_LED_SENDING);
         esp_err_t err = http_post_measurement(&r);

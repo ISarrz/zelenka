@@ -24,13 +24,14 @@ static const char *TAG = "sensors";
 // ---- I2C bus ---------------------------------------------------------------
 
 #define I2C_PORT      I2C_NUM_0
-#define I2C_SDA_GPIO  8
-#define I2C_SCL_GPIO  9
+#define I2C_SDA_GPIO  6
+#define I2C_SCL_GPIO  7
 #define I2C_FREQ_HZ   100000
 #define I2C_TIMEOUT_MS 100
 
-#define BME280_ADDR   0x76
 #define BH1750_ADDR   0x23
+
+static uint8_t BME280_ADDR = 0x76;  // may be flipped to 0x77 by bme280_init_alt()
 
 static esp_err_t i2c_write(uint8_t addr, const uint8_t *buf, size_t len) {
     return i2c_master_write_to_device(I2C_PORT, addr, buf, len,
@@ -61,10 +62,11 @@ static esp_err_t bme280_write_u8(uint8_t reg, uint8_t val) {
 static esp_err_t bme280_init(void) {
     uint8_t id = 0;
     if (i2c_write_read(BME280_ADDR, 0xD0, &id, 1) != ESP_OK) return ESP_FAIL;
-    if (id != 0x60) {
-        ESP_LOGW(TAG, "BME280 chip id 0x%02x (expected 0x60)", id);
+    if (id != 0x60 && id != 0x58) { // 0x58 = BMP280 (P/T only), 0x60 = BME280
+        ESP_LOGW(TAG, "BME280 chip id 0x%02x at 0x%02x (expected 0x60)", id, BME280_ADDR);
         return ESP_FAIL;
     }
+    ESP_LOGI(TAG, "BME280 found at 0x%02x (chip id 0x%02x)", BME280_ADDR, id);
 
     // Calibration regs 0x88..0xA1 (T+P+H1).
     uint8_t b[26];
@@ -100,6 +102,11 @@ static esp_err_t bme280_init(void) {
 
     s_bme_ok = true;
     return ESP_OK;
+}
+
+static esp_err_t bme280_init_alt(void) {
+    BME280_ADDR = 0x77;
+    return bme280_init();
 }
 
 static float bme280_compensate_T(int32_t adc) {
@@ -208,6 +215,22 @@ static int soil_read_raw(void) {
 
 // ---- Public API -----------------------------------------------------------
 
+void sensors_debug_scan(void);
+
+static void i2c_scan(void) {
+    ESP_LOGI(TAG, "I2C scan on SDA=GPIO%d SCL=GPIO%d:", I2C_SDA_GPIO, I2C_SCL_GPIO);
+    int found = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        uint8_t dummy;
+        if (i2c_master_read_from_device(I2C_PORT, addr, &dummy, 1,
+                                        pdMS_TO_TICKS(30)) == ESP_OK) {
+            ESP_LOGI(TAG, "  found device at 0x%02x", addr);
+            found++;
+        }
+    }
+    if (!found) ESP_LOGW(TAG, "  no devices on bus");
+}
+
 void sensors_init(void) {
     i2c_config_t cfg = {
         .mode = I2C_MODE_MASTER,
@@ -220,7 +243,13 @@ void sensors_init(void) {
     i2c_param_config(I2C_PORT, &cfg);
     i2c_driver_install(I2C_PORT, I2C_MODE_MASTER, 0, 0, 0);
 
-    bme280_init();
+    i2c_scan();
+
+    if (bme280_init() != ESP_OK) {
+        ESP_LOGW(TAG, "BME280 init failed at 0x%02x — retrying at 0x77", BME280_ADDR);
+        // some boards float SDO and end up at 0x77.
+        bme280_init_alt();
+    }
     bh1750_init();
     soil_init();
 
@@ -248,4 +277,8 @@ void sensors_read(sensor_reading_t *out) {
             out->has_soil = true;
         }
     }
+}
+
+void sensors_debug_scan(void) {
+    i2c_scan();
 }

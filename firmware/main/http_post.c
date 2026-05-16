@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
@@ -58,6 +59,7 @@ esp_err_t http_post_measurement(const sensor_reading_t *r) {
         .url = CONFIG_ZELENKA_API_URL,
         .method = HTTP_METHOD_POST,
         .timeout_ms = 5000,
+        .crt_bundle_attach = esp_crt_bundle_attach,
     };
     esp_http_client_handle_t cli = esp_http_client_init(&cfg);
     esp_http_client_set_header(cli, "Content-Type", "application/json");
