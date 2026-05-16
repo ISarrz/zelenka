@@ -135,18 +135,33 @@ idf.py build flash monitor
 
 `firmware/README.md` has the full pin map and LED legend.
 
-### Sprint 0 limits (do not extend without need)
+### Sprint 2 firmware state
 
-- Wi-Fi creds and API URL are static menuconfig values. No captive
-  portal, no provisioning UX.
-- No deep sleep (`vTaskDelay` between samples).
-- No batching, no buffer, no LittleFS fallback.
-- No OTA.
-- Touch button is wired (GPIO10) but unread.
-- Battery not measured. Server-side `battery_estimate` field will exist
-  when needed (firmware just doesn't fill it yet).
+- **Provisioning**: SoftAP `Zelenka-XXXX` (AP MAC, which is STA+1) +
+  captive portal at `192.168.4.1`. RU form for SSID / Wi-Fi password /
+  device token. DNS hijack + DHCP option 6 force the device's IP as
+  DNS so iOS/Android show the captive sheet. Result saved to NVS,
+  device reboots into STA mode.
+- **Touch factory reset**: TTP223 DO on GPIO10. Held ≥3 s through a
+  **power-on** boot → wipe NVS → reboot into provisioning. Deliberately
+  ignored on USB/SW resets (DTR-pulse from a debugger would otherwise
+  wipe creds every time).
+- **Operational cycle**: wake → sample → store in RTC-RAM buffer
+  (6 slots, survives deep sleep). When full: Wi-Fi up → NTP if not
+  synced → backfill 0-epoch timestamps by extrapolation → POST batch
+  → clear. Otherwise straight to deep sleep. 10-min interval =
+  one POST per hour, ~0.7 % awake duty cycle.
+- **Flash layout**: 4 MB chip, custom `partitions.csv` (2 MB factory
+  app, 1 MB spiffs reserve). HTTPS cert bundle pushes the image
+  past the stock 1 MB partition.
 
-All of the above lands in Sprint 2 per `docs/mvp-plan.md` § 5.
+### Sprint 2 limits (still deferred)
+
+- No OTA — re-flash via USB-C only. Sprint 3.
+- No LittleFS fallback when offline beyond one cycle — buffer is held
+  in RTC RAM and overwrites on overflow (rare; covers ~hour of outage).
+- Battery not measured. Server-side `battery_estimate` is unused until
+  hardware ships. Sprint 3 or whenever the hardware path is ready.
 
 ## infra/ — the stack
 
