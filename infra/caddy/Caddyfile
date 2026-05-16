@@ -1,0 +1,21 @@
+{
+	email {$ACME_EMAIL}
+}
+
+# In dev, WEB_HOST is `:80` (Caddy listens on plain HTTP). In prod, it's a real
+# domain like `zelenka-api.ru` and Caddy auto-fetches a Let's Encrypt cert.
+{$WEB_HOST} {
+	encode gzip
+
+	# Everything API-prefixed goes to the api container. The PWA always calls
+	# its own origin's /api/* path, so we don't need CORS in prod.
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	# Static PWA. nginx inside the web container handles SPA fallback to
+	# index.html for unknown paths.
+	handle {
+		reverse_proxy web:5173
+	}
+}

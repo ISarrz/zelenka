@@ -1,0 +1,106 @@
+# Zelenka — full stack.
+#
+# Dev:
+#   docker compose -f infra/docker-compose.yml --env-file infra/.env.dev up --build
+#   → Caddy listens on :80, routes /api/* to the api container and everything
+#     else to the web container. No TLS in dev.
+#
+# Prod (on the server):
+#   docker compose -f infra/docker-compose.yml --env-file infra/.env.prod up -d --build
+#   → Caddy listens on :80 + :443, auto-fetches Let's Encrypt certs for
+#     WEB_HOST (a real domain like zelenka-api.ru).
+
+services:
+  app-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${APP_DB_NAME}
+      POSTGRES_USER: ${APP_DB_USER}
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD}
+    volumes:
+      - app_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${APP_DB_USER} -d ${APP_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Read-only mirror of Perenual. Seeded on first boot from
+  # infra/perenual-seed/perenual.sql.gz (created via
+  # infra/perenual-seed/refresh.sh from the upstream perenual_pg container).
+  # We never write to this DB at runtime.
+  perenual-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: perenual
+      POSTGRES_USER: perenual
+      POSTGRES_PASSWORD: ${PERENUAL_DB_PASSWORD}
+      PERENUAL_RO_PASSWORD: ${PERENUAL_RO_PASSWORD}
+    volumes:
+      - perenual_db_data:/var/lib/postgresql/data
+      - ./perenual-seed/perenual.sql.gz:/docker-entrypoint-initdb.d/01_perenual.sql.gz:ro
+      - ./perenual-init/02_create_ro_user.sh:/docker-entrypoint-initdb.d/02_create_ro_user.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perenual -d perenual"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../apps/api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      PORT: 8080
+      DATABASE_URL: postgresql://${APP_DB_USER}:${APP_DB_PASSWORD}@app-db:5432/${APP_DB_NAME}
+      PERENUAL_DATABASE_URL: postgresql://perenual_ro:${PERENUAL_RO_PASSWORD}@perenual-db:5432/perenual
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      MAGIC_LINK_TTL_MIN: ${MAGIC_LINK_TTL_MIN:-15}
+      WEB_BASE_URL: ${WEB_BASE_URL}
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-console}
+      PLANT_ID_API_KEY: ${PLANT_ID_API_KEY:-}
+    depends_on:
+      app-db:
+        condition: service_healthy
+      perenual-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  web:
+    build:
+      context: ../apps/web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      WEB_HOST: ${WEB_HOST}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+
+volumes:
+  app_db_data:
+  perenual_db_data:
+  caddy_data:
+  caddy_config:

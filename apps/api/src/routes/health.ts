@@ -2,9 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../db.js';
 
 export async function healthRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/healthz', async () => ({ status: 'ok' }));
+  app.get('/api/healthz', async () => ({ status: 'ok' }));
 
-  app.get('/readyz', async (_req, reply) => {
+  app.get('/api/readyz', async (_req, reply) => {
     try {
       await prisma.$queryRaw`SELECT 1`;
       return { status: 'ready' };

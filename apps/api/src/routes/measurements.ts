@@ -22,7 +22,7 @@ const Body = z.union([
 ]);
 
 export async function measurementRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/device/measurements', { preHandler: requireDevice }, async (req, reply) => {
+  app.post('/api/device/measurements', { preHandler: requireDevice }, async (req, reply) => {
     const parsed = Body.safeParse(req.body);
     if (!parsed.success) {
       reply.code(400);
