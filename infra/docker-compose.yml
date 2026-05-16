@@ -61,7 +61,12 @@ services:
       MAGIC_LINK_TTL_MIN: ${MAGIC_LINK_TTL_MIN:-15}
       WEB_BASE_URL: ${WEB_BASE_URL}
       MAIL_TRANSPORT: ${MAIL_TRANSPORT:-console}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-Zelenka <noreply@zelenka-api.ru>}
       PLANT_ID_API_KEY: ${PLANT_ID_API_KEY:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@zelenka-api.ru}
       FIRMWARE_DIR: /firmware
     volumes:
       # Read-only firmware artifact directory served via /api/firmware/*.

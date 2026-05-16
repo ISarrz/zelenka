@@ -9,6 +9,7 @@ import { firmwareRoutes } from './routes/firmware.js';
 import { healthRoutes } from './routes/health.js';
 import { measurementRoutes } from './routes/measurements.js';
 import { plantRoutes } from './routes/plants.js';
+import { pushRoutes } from './routes/push.js';
 
 const app = Fastify({
   logger: { level: isProd ? 'info' : 'debug' },
@@ -33,6 +34,7 @@ await app.register(deviceRoutes);
 await app.register(measurementRoutes);
 await app.register(plantRoutes);
 await app.register(firmwareRoutes);
+await app.register(pushRoutes);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'shutting down');

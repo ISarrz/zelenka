@@ -10,6 +10,11 @@ import {
   type User,
   type Verdict,
 } from '../api';
+import {
+  isPushSupported,
+  isStandalonePWA,
+  subscribeToPush,
+} from '../lib/push';
 
 type Status = 'loading' | 'unauth' | 'no-device' | 'no-data' | 'ready';
 
@@ -98,6 +103,8 @@ export function HomePage() {
         </button>
       )}
 
+      <PushControl />
+
       <Grid m={measurement} v={verdict} />
 
       {status === 'no-data' && (
@@ -170,6 +177,78 @@ function Cell({
         {display}
         <span className="text-base font-normal text-neutral-500 ml-1">{unit}</span>
       </div>
+    </div>
+  );
+}
+
+function PushControl() {
+  const [state, setState] = useState<'idle' | 'pending' | 'on' | 'unsupported' | 'needs-pwa' | 'denied' | 'error'>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isPushSupported()) { setState('unsupported'); return; }
+    // iOS pre-16.4 + non-installed PWA on iOS = no push.
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua);
+    if (isIOS && !isStandalonePWA()) { setState('needs-pwa'); return; }
+    if (Notification.permission === 'granted') setState('on');
+    else if (Notification.permission === 'denied') setState('denied');
+  }, []);
+
+  const enable = async () => {
+    setState('pending');
+    setError(null);
+    try {
+      const { key } = await api.vapidPublicKey();
+      if (!key) throw new Error('сервер не настроен для push');
+      const sub = await subscribeToPush(key);
+      await api.pushSubscribe(sub.toJSON() as PushSubscriptionJSON);
+      setState('on');
+    } catch (err) {
+      setError((err as Error).message);
+      setState('error');
+    }
+  };
+
+  const sendTest = async () => {
+    try { await api.pushTest(); }
+    catch (err) { setError((err as Error).message); }
+  };
+
+  if (state === 'unsupported') return null;
+  if (state === 'needs-pwa') {
+    return (
+      <p className="text-sm text-neutral-500 text-center max-w-sm">
+        Чтобы получать уведомления на iPhone, добавьте Zelenka на главный
+        экран через значок «Поделиться».
+      </p>
+    );
+  }
+  if (state === 'on') {
+    return (
+      <button onClick={sendTest} className="text-sm text-status-ok underline">
+        Прислать тестовое уведомление
+      </button>
+    );
+  }
+  if (state === 'denied') {
+    return (
+      <p className="text-sm text-neutral-500 text-center max-w-sm">
+        Разрешите уведомления в настройках браузера, чтобы получать
+        напоминания о поливе.
+      </p>
+    );
+  }
+  return (
+    <div className="text-center space-y-1">
+      <button
+        onClick={enable}
+        disabled={state === 'pending'}
+        className="rounded-full bg-status-ok text-white px-5 py-2 text-sm font-medium disabled:opacity-50"
+      >
+        {state === 'pending' ? 'Подключаем…' : 'Включить уведомления'}
+      </button>
+      {error && <p className="text-xs text-neutral-500">{error}</p>}
     </div>
   );
 }

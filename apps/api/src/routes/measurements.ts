@@ -2,6 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireDevice } from '../lib/auth.js';
+import { evaluatePushTriggers } from '../lib/rules.js';
+import type { CareThresholds } from '../lib/thresholds.js';
+import { GENERIC_THRESHOLDS } from '../lib/thresholds.js';
+import { evaluate, type RingStatus } from '../lib/verdict.js';
 
 // One physical sample from the sensor. All fields nullable so firmware can ship
 // an early build that only fills, say, temperatureC + soilMoistureRaw.
@@ -53,6 +57,68 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
         soilMoisturePct: s.soilMoisturePct ?? null,
       })),
     });
+
+    // Rule engine — evaluate only against the most recent sample in the
+    // batch (the older ones are stale by definition).
+    const device = await prisma.device.findUnique({
+      where: { id: req.deviceId! },
+      include: {
+        user: { select: { id: true, quietHoursStartMin: true, quietHoursEndMin: true } },
+        plant: { include: { species: true } },
+      },
+    });
+    const plant = device?.plant;
+    if (device && plant) {
+      const last = samples[samples.length - 1];
+      const measuredAt = last.measuredAt ? new Date(last.measuredAt) : now;
+      const thresholds: CareThresholds =
+        (plant.species?.thresholds as unknown as CareThresholds | null) ?? GENERIC_THRESHOLDS;
+      const verdict = evaluate(
+        {
+          temperatureC: last.temperatureC ?? null,
+          humidityPct: last.humidityPct ?? null,
+          lux: last.lux ?? null,
+          soilMoistureRaw: last.soilMoistureRaw ?? null,
+        },
+        thresholds,
+        plant.identifiedAt,
+      );
+
+      // Pull the previous-but-one measurement for sharp-change detection.
+      const prevMeasurement = await prisma.measurement.findFirst({
+        where: { deviceId: device.id, measuredAt: { lt: measuredAt } },
+        orderBy: { measuredAt: 'desc' },
+      });
+
+      await evaluatePushTriggers({
+        plant: {
+          id: plant.id,
+          userId: plant.userId,
+          name: plant.name,
+          thresholds,
+          prevRingStatus: (plant.lastRingStatus as RingStatus | null) ?? null,
+          prevTemperatureC: prevMeasurement?.temperatureC ?? null,
+          prevMeasuredAt: prevMeasurement?.measuredAt ?? null,
+        },
+        measurement: {
+          temperatureC: last.temperatureC ?? null,
+          humidityPct: last.humidityPct ?? null,
+          lux: last.lux ?? null,
+          soilMoistureRaw: last.soilMoistureRaw ?? null,
+          measuredAt,
+        },
+        newVerdict: verdict,
+        quietHours: {
+          startMin: device.user.quietHoursStartMin ?? null,
+          endMin: device.user.quietHoursEndMin ?? null,
+        },
+      });
+
+      await prisma.plant.update({
+        where: { id: plant.id },
+        data: { lastRingStatus: verdict.ring },
+      });
+    }
 
     return { stored: samples.length };
   });

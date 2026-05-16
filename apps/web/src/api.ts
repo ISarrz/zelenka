@@ -130,4 +130,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  vapidPublicKey: () => request<{ key: string | null }>('/push/vapid-public-key'),
+  pushSubscribe: (sub: PushSubscriptionJSON) =>
+    request<{ id: string }>('/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify(sub),
+    }),
+  pushUnsubscribe: (endpoint: string) =>
+    request<{ status: string }>('/push/unsubscribe', {
+      method: 'POST',
+      body: JSON.stringify({ endpoint }),
+    }),
+  pushTest: () =>
+    request<{ delivered: number; removed: number }>('/push/test', { method: 'POST' }),
 };

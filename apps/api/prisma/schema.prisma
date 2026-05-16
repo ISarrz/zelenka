@@ -19,11 +19,18 @@ model User {
   email     String   @unique
   createdAt DateTime @default(now())
 
+  // Quiet hours, minutes-from-midnight in the user's local time. Nullable =
+  // no quiet hours configured. Both inclusive: e.g. start=23*60, end=7*60.
+  quietHoursStartMin Int?
+  quietHoursEndMin   Int?
+
   magicLinks       MagicLinkToken[]
   sessions         Session[]
   devices          Device[]
   plants           Plant[]
   identifications  IdentificationRequest[]
+  pushSubs         PushSubscription[]
+  notifications    NotificationLog[]
 }
 
 model MagicLinkToken {
@@ -97,10 +104,45 @@ model Plant {
   name       String        // user-chosen, e.g. "Фикус у окна"
   photoUrl   String?
   identifiedAt DateTime?
+  // Last computed ring state — used to detect "entered problem zone"
+  // transitions for push triggering.
+  lastRingStatus String?  // "cold" | "ok" | "warn" | "alert"
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
   @@index([userId])
+}
+
+// Web Push subscription per browser/device. Multiple per user (e.g. iPhone +
+// desktop). On send-failure (4xx) we delete the row.
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  authKey   String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Audit + dedup log for outgoing pushes. The rule engine uses it to enforce
+// cooldown (12h per (plant, kind)) and the daily cap (3 / plant / 24h).
+model NotificationLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plantId   String?
+  kind      String   // "soil_orange" | "soil_red" | "temp_orange" | "temp_red" | "temp_drop" | ...
+  title     String
+  body      String
+  sentAt    DateTime @default(now())
+  // null if we suppressed the push (cooldown, quiet hours, daily cap) — still
+  // logged so we know we "would have" fired.
+  suppressedReason String?
+
+  @@index([userId, plantId, kind, sentAt])
 }
 
 // Rate-limit log for Plant.id calls — 3 per rolling 7 days per user.

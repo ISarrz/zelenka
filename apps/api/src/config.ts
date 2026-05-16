@@ -17,6 +17,11 @@ export const config = {
   webBaseUrl: optional('WEB_BASE_URL', 'http://localhost:5173'),
   mailTransport: optional('MAIL_TRANSPORT', 'console'),
   plantIdApiKey: optional('PLANT_ID_API_KEY', ''),
+  resendApiKey: optional('RESEND_API_KEY', ''),
+  resendFrom: optional('RESEND_FROM', 'Zelenka <noreply@zelenka-api.ru>'),
+  vapidPublicKey: optional('VAPID_PUBLIC_KEY', ''),
+  vapidPrivateKey: optional('VAPID_PRIVATE_KEY', ''),
+  vapidSubject: optional('VAPID_SUBJECT', 'mailto:admin@zelenka-api.ru'),
 };
 
 export const isProd = config.env === 'production';
