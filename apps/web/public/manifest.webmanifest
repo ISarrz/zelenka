@@ -1,0 +1,13 @@
+{
+  "name": "Zelenka",
+  "short_name": "Zelenka",
+  "description": "Уход за комнатными растениями по данным с датчика",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#22c55e",
+  "lang": "ru",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

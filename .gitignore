@@ -16,6 +16,9 @@ plantnet_key*.txt
 # Build artifacts
 **/build/
 **/cmake-build-*/
-**/.dart_tool/
-**/.flutter-plugins
-**/.flutter-plugins-dependencies
+node_modules/
+dist/
+
+# Perenual seed dump — refreshed via infra/perenual-seed/refresh.sh
+infra/perenual-seed/*.sql.gz
+infra/perenual-seed/*.sql
