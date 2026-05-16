@@ -16,54 +16,74 @@ import {
   subscribeToPush,
 } from '../lib/push';
 
-type Status = 'loading' | 'unauth' | 'no-device' | 'no-data' | 'ready';
+type Status = 'loading' | 'no-device' | 'no-data' | 'ready';
+const ACTIVE_KEY = 'zelenka_active_device';
 
 export function HomePage() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<Status>('loading');
   const [, setUser] = useState<User | null>(null);
-  const [device, setDevice] = useState<Device | null>(null);
-  const [plant, setPlant] = useState<Plant | null>(null);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(
+    () => typeof window !== 'undefined' ? localStorage.getItem(ACTIVE_KEY) : null,
+  );
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
+  // List devices once; pick a sensible active id; keep the list in state.
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+    api.me()
+      .then((me) => { if (!cancelled) setUser(me.user); })
+      .catch((err) => {
+        if ((err as { status?: number }).status === 401) navigate('/auth', { replace: true });
+      });
+
+    const reloadList = async () => {
       try {
-        const me = await api.me();
-        if (cancelled) return;
-        setUser(me.user);
         const list = await api.listDevices();
         if (cancelled) return;
+        setDevices(list.devices);
         if (list.devices.length === 0) {
           setStatus('no-device');
+          setActiveId(null);
           return;
         }
-        const d = list.devices[0];
-        setDevice(d);
-        const latest = await api.latestMeasurement(d.id);
+        const known = activeId && list.devices.find((d) => d.id === activeId);
+        const next = known ? activeId : list.devices[0].id;
+        if (next !== activeId) {
+          setActiveId(next);
+          localStorage.setItem(ACTIVE_KEY, next);
+        }
+      } catch (err) {
+        if ((err as { status?: number }).status === 401) navigate('/auth', { replace: true });
+      }
+    };
+    reloadList();
+    return () => { cancelled = true; };
+  }, [navigate, activeId]);
+
+  // Per-active-device polling for latest measurement.
+  useEffect(() => {
+    if (!activeId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const latest = await api.latestMeasurement(activeId);
         if (cancelled) return;
-        setPlant(latest.plant);
         setMeasurement(latest.measurement);
         setVerdict(latest.verdict);
         setStatus(latest.measurement ? 'ready' : 'no-data');
       } catch (err) {
         const code = (err as { status?: number }).status;
-        if (code === 401) {
-          if (!cancelled) navigate('/auth', { replace: true });
-        } else if (!cancelled) {
-          setStatus('no-data');
-        }
+        if (code === 401) navigate('/auth', { replace: true });
       }
     };
-    load();
-    const interval = setInterval(load, 10_000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [navigate]);
+    poll();
+    const interval = setInterval(poll, 10_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [activeId, navigate]);
 
   if (status === 'loading') {
     return (
@@ -74,11 +94,18 @@ export function HomePage() {
   }
 
   if (status === 'no-device') {
-    return <NoDevicePrompt onCreated={(d) => { setDevice(d); setStatus('no-data'); }} />;
+    return <NoDevicePrompt onCreated={(d) => {
+      setDevices([d]);
+      setActiveId(d.id);
+      localStorage.setItem(ACTIVE_KEY, d.id);
+      setStatus('no-data');
+    }} />;
   }
 
+  const device = devices.find((d) => d.id === activeId) ?? devices[0];
+  const plant: Plant | null = device.plant ?? null;
   const ringStatus: RingStatus = verdict?.ring ?? 'cold';
-  const title = plant?.name ?? device?.name ?? 'Растение';
+  const title = plant?.name ?? device.name;
   const subtitle = plant?.species?.commonNameRu
     ?? plant?.species?.commonNameEn
     ?? plant?.species?.scientificName
@@ -86,23 +113,24 @@ export function HomePage() {
 
   return (
     <main className="min-h-full flex flex-col items-center justify-center p-6 gap-6">
-      <Ring status={ringStatus} />
-      <div className="text-center">
-        <h1 className="text-xl font-semibold">{title}</h1>
-        {subtitle && (
-          <p className="text-sm text-neutral-500 italic">{subtitle}</p>
-        )}
-        {device && (
-          <button
-            onClick={() => navigate(`/devices/${device.id}`)}
-            className="mt-1 text-xs text-status-ok underline"
-          >
-            Графики и журнал →
-          </button>
-        )}
-      </div>
+      <PlantSwitcher
+        devices={devices}
+        activeId={device.id}
+        title={title}
+        subtitle={subtitle}
+        onOpen={() => setPickerOpen(true)}
+      />
 
-      {!plant && device && (
+      <Ring status={ringStatus} />
+
+      <button
+        onClick={() => navigate(`/devices/${device.id}`)}
+        className="text-xs text-status-ok underline"
+      >
+        Графики и журнал →
+      </button>
+
+      {!plant && (
         <button
           onClick={() => navigate(`/devices/${device.id}/identify`)}
           className="rounded-full bg-status-ok text-white px-5 py-2 text-sm font-medium"
@@ -118,10 +146,66 @@ export function HomePage() {
       {status === 'no-data' && (
         <p className="text-sm text-neutral-500 text-center max-w-sm">
           Датчик ещё не присылал данные. Токен:&nbsp;
-          <code className="select-all break-all">{device?.deviceToken}</code>
+          <code className="select-all break-all">{device.deviceToken}</code>
         </p>
       )}
+
+      {pickerOpen && (
+        <PlantPicker
+          devices={devices}
+          activeId={device.id}
+          onPick={(id) => {
+            setActiveId(id);
+            localStorage.setItem(ACTIVE_KEY, id);
+            setPickerOpen(false);
+          }}
+          onClose={() => setPickerOpen(false)}
+          onAdded={(d) => {
+            setDevices((arr) => [d, ...arr]);
+            setActiveId(d.id);
+            localStorage.setItem(ACTIVE_KEY, d.id);
+            setPickerOpen(false);
+          }}
+        />
+      )}
     </main>
+  );
+}
+
+function PlantSwitcher({
+  devices, activeId, title, subtitle, onOpen,
+}: {
+  devices: Device[];
+  activeId: string;
+  title: string;
+  subtitle: string | null;
+  onOpen: () => void;
+}) {
+  if (devices.length <= 1) {
+    return (
+      <div className="text-center">
+        <h1 className="text-xl font-semibold">{title}</h1>
+        {subtitle && <p className="text-sm text-neutral-500 italic">{subtitle}</p>}
+      </div>
+    );
+  }
+  const idx = devices.findIndex((d) => d.id === activeId);
+  return (
+    <button onClick={onOpen} className="text-center flex flex-col items-center gap-1">
+      <span className="text-xl font-semibold inline-flex items-center gap-1">
+        {title}
+        <span className="text-neutral-400" aria-hidden>▾</span>
+      </span>
+      {subtitle && <span className="text-sm text-neutral-500 italic">{subtitle}</span>}
+      <span className="flex gap-1.5 mt-1">
+        {devices.map((d, i) => (
+          <span
+            key={d.id}
+            className={`block w-1.5 h-1.5 rounded-full ${i === idx ? 'bg-neutral-700 dark:bg-neutral-200' : 'bg-neutral-300 dark:bg-neutral-700'}`}
+          />
+        ))}
+      </span>
+    </button>
   );
 }
 
@@ -189,13 +273,109 @@ function Cell({
   );
 }
 
+function PlantPicker({
+  devices, activeId, onPick, onClose, onAdded,
+}: {
+  devices: Device[];
+  activeId: string;
+  onPick: (id: string) => void;
+  onClose: () => void;
+  onAdded: (d: Device) => void;
+}) {
+  const [addOpen, setAddOpen] = useState(false);
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-neutral-900 rounded-2xl w-full max-w-sm p-3 space-y-1"
+      >
+        <h3 className="font-semibold px-2 pt-1 pb-2 text-sm text-neutral-500">Растения</h3>
+        <ul>
+          {devices.map((d) => {
+            const isActive = d.id === activeId;
+            const name = d.plant?.name ?? d.name;
+            const sub = d.plant?.species?.commonNameRu
+              ?? d.plant?.species?.commonNameEn
+              ?? d.plant?.species?.scientificName
+              ?? (d.plant ? 'общий профиль' : 'нет растения');
+            return (
+              <li key={d.id}>
+                <button
+                  onClick={() => onPick(d.id)}
+                  className={`w-full flex items-center justify-between rounded-xl px-3 py-2 text-left ${isActive ? 'bg-neutral-100 dark:bg-neutral-800' : ''}`}
+                >
+                  <span>
+                    <div className="font-medium">{name}</div>
+                    <div className="text-xs text-neutral-500 italic">{sub}</div>
+                  </span>
+                  {isActive && <span className="text-status-ok text-sm">✓</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="border-t border-neutral-200 dark:border-neutral-800 mt-2 pt-2">
+          {addOpen ? (
+            <AddDeviceInline
+              onCreated={(d) => { setAddOpen(false); onAdded(d); }}
+              onCancel={() => setAddOpen(false)}
+            />
+          ) : (
+            <button
+              onClick={() => setAddOpen(true)}
+              className="w-full rounded-xl px-3 py-2 text-left text-sm text-status-ok"
+            >+ Добавить растение</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddDeviceInline({
+  onCreated, onCancel,
+}: {
+  onCreated: (d: Device) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [pending, setPending] = useState(false);
+  const submit = async () => {
+    if (!name.trim()) return;
+    setPending(true);
+    try {
+      const { device } = await api.createDevice(name.trim());
+      onCreated(device);
+    } finally { setPending(false); }
+  };
+  return (
+    <div className="space-y-2 px-1">
+      <input
+        autoFocus
+        placeholder="Имя растения"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2"
+      />
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-800 py-2 text-sm">Отмена</button>
+        <button onClick={submit} disabled={pending || !name.trim()} className="flex-1 rounded-lg bg-status-ok text-white py-2 text-sm font-medium disabled:opacity-50">
+          {pending ? 'Создаём…' : 'Создать'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PushControl() {
   const [state, setState] = useState<'idle' | 'pending' | 'on' | 'unsupported' | 'needs-pwa' | 'denied' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isPushSupported()) { setState('unsupported'); return; }
-    // iOS pre-16.4 + non-installed PWA on iOS = no push.
     const ua = navigator.userAgent;
     const isIOS = /iPad|iPhone|iPod/.test(ua);
     if (isIOS && !isStandalonePWA()) { setState('needs-pwa'); return; }
