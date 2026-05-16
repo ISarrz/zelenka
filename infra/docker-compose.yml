@@ -68,11 +68,22 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@zelenka-api.ru}
       FIRMWARE_DIR: /firmware
+      SPECIES_PHOTOS_DIR: /photos
+      PERENUAL_PHOTOS_DIR: /perenual-photos
       TZ: Europe/Moscow
     volumes:
       # Read-only firmware artifact directory served via /api/firmware/*.
       # Populated by infra/firmware-publish.sh on the host.
       - ./firmware-releases:/firmware:ro
+      # Local copies of Perenual species photos — proxied via
+      # /api/plants/species/:id/photo so we're not at the mercy of
+      # presigned-URL expiry on the upstream S3.
+      - species_photos:/photos
+      # Read-only set of upstream Perenual species images (medium.jpg
+      # variant only, ~430 MB). Populated by rsync from a dev machine
+      # that already has the full Perenual mirror; the API copies
+      # what it needs from here into species_photos on first resolve.
+      - ./perenual-photos:/perenual-photos:ro
     depends_on:
       app-db:
         condition: service_healthy
@@ -115,3 +126,4 @@ volumes:
   perenual_db_data:
   caddy_data:
   caddy_config:
+  species_photos:

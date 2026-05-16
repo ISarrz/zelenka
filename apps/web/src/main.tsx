@@ -6,6 +6,7 @@ import { AuthConsumePage } from './pages/AuthConsume';
 import { HomePage } from './pages/Home';
 import { IdentifyPage } from './pages/Identify';
 import { PlantCardPage } from './pages/PlantCard';
+import { SettingsPage } from './pages/Settings';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -17,6 +18,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/auth/consume" element={<AuthConsumePage />} />
         <Route path="/devices/:deviceId/identify" element={<IdentifyPage />} />
         <Route path="/devices/:id" element={<PlantCardPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

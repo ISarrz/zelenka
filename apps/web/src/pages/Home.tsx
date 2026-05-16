@@ -117,7 +117,15 @@ export function HomePage() {
     ?? (plant ? 'общий профиль' : null);
 
   return (
-    <main className="min-h-full flex flex-col items-center justify-center p-6 gap-6">
+    <main className="relative min-h-full flex flex-col items-center justify-center p-6 gap-6">
+      <div className="absolute top-3 right-3">
+        <button
+          onClick={() => navigate('/settings')}
+          aria-label="Настройки"
+          className="text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 p-2"
+        >⚙</button>
+      </div>
+
       <PlantSwitcher
         devices={devices}
         activeId={device.id}

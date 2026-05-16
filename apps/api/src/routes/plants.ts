@@ -1,3 +1,4 @@
+import { createReadStream } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
@@ -5,6 +6,12 @@ import { prisma } from '../db.js';
 import { requireUser } from '../lib/auth.js';
 import { identifyPlant } from '../lib/plantid.js';
 import { findBestPerenualMatch } from '../lib/perenual.js';
+import {
+  copyFromUpstreamMirror,
+  downloadPhoto,
+  localPhotoExists,
+  localPhotoPath,
+} from '../lib/species_photo.js';
 import { GENERIC_THRESHOLDS, thresholdsFromPerenual } from '../lib/thresholds.js';
 
 // 3 identifications per rolling 7d, per the design doc.
@@ -95,11 +102,45 @@ export async function plantRoutes(app: FastifyInstance): Promise<void> {
         perenualId: hit?.id ?? null,
         commonNameEn: hit?.commonName ?? null,
         family: hit?.family ?? null,
-        defaultImageUrl: hit?.defaultImageUrl ?? null,
+        defaultImageUrl: null,
         thresholds: thresholds as unknown as Prisma.InputJsonValue,
         rawDetails: (hit?.details ?? null) as Prisma.InputJsonValue,
       },
     });
+
+    // Cache the species photo locally. Prefer the read-only Perenual photo
+    // mirror (medium.jpg, shipped via rsync from the dev box); fall back to
+    // their presigned Wasabi URL — which is usually dead by the time anyone
+    // resolves a species, since dumps live longer than 24 h.
+    let cached = false;
+    if (hit?.id) {
+      const r = await copyFromUpstreamMirror(created.id, hit.id);
+      if (r.ok) cached = true;
+    }
+    if (!cached && hit?.defaultImageUrl) {
+      const r = await downloadPhoto(created.id, hit.defaultImageUrl);
+      if (r.ok) cached = true;
+    }
+    if (cached) {
+      const proxied = `/api/plants/species/${created.id}/photo`;
+      await prisma.plantSpecies.update({
+        where: { id: created.id },
+        data: { defaultImageUrl: proxied },
+      });
+      created.defaultImageUrl = proxied;
+    }
+
     return { species: created };
+  });
+
+  app.get('/api/plants/species/:id/photo', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!(await localPhotoExists(id))) {
+      reply.code(404);
+      return { error: 'no photo' };
+    }
+    reply.header('Content-Type', 'image/jpeg');
+    reply.header('Cache-Control', 'public, max-age=86400');
+    return reply.send(createReadStream(localPhotoPath(id)));
   });
 }

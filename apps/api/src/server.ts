@@ -10,6 +10,7 @@ import { eventRoutes } from './routes/events.js';
 import { firmwareRoutes } from './routes/firmware.js';
 import { healthRoutes } from './routes/health.js';
 import { measurementRoutes } from './routes/measurements.js';
+import { meRoutes } from './routes/me.js';
 import { plantRoutes } from './routes/plants.js';
 import { pushRoutes } from './routes/push.js';
 
@@ -38,6 +39,7 @@ await app.register(plantRoutes);
 await app.register(eventRoutes);
 await app.register(firmwareRoutes);
 await app.register(pushRoutes);
+await app.register(meRoutes);
 
 let scheduledTimer: NodeJS.Timeout | null = null;
 

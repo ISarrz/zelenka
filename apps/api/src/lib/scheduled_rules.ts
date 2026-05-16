@@ -8,6 +8,7 @@ import { prisma } from '../db.js';
 import { sendPushToUser } from './push.js';
 import type { CareThresholds } from './thresholds.js';
 import { GENERIC_THRESHOLDS } from './thresholds.js';
+import { localDateKey, minutesOfDayInTz } from './tz.js';
 
 const COOLDOWN_24H = 24 * 60 * 60 * 1000;
 const SENSOR_SILENT_HOURS = 24;
@@ -176,25 +177,29 @@ async function scanOnboarding(plants: PlantSnap[]): Promise<void> {
 async function scanMorningDigests(now: Date): Promise<void> {
   const users = await prisma.user.findMany({
     where: { quietHoursEndMin: { not: null } },
-    select: { id: true, quietHoursEndMin: true },
+    select: { id: true, quietHoursEndMin: true, timezone: true },
   });
-
-  // Local-time minute of the day (uses container TZ; we set it to Europe/Moscow).
-  const localMinute = now.getHours() * 60 + now.getMinutes();
 
   for (const u of users) {
     const endMin = u.quietHoursEndMin!;
-    // Fire if "now" is within the 10-min window starting at quietHoursEnd
-    // and we haven't already digested today (TZ-local).
+    const localMinute = minutesOfDayInTz(now, u.timezone);
+    // Fire if "now" is within the 10-min window starting at quietHoursEnd in
+    // the user's local time, and we haven't already digested today.
     const diff = (localMinute - endMin + 24 * 60) % (24 * 60);
     if (diff > 10) continue;
 
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    const todayKey = localDateKey(now, u.timezone);
     const alreadyToday = await prisma.notificationLog.findFirst({
-      where: { userId: u.id, kind: 'morning_digest', sentAt: { gte: todayStart } },
+      where: {
+        userId: u.id,
+        kind: 'morning_digest',
+        // suppressedReason isn't used here, but cooldown-style queries elsewhere
+        // ignore suppressed rows, so we also pin to non-suppressed.
+        suppressedReason: null,
+      },
+      orderBy: { sentAt: 'desc' },
     });
-    if (alreadyToday) continue;
+    if (alreadyToday && localDateKey(alreadyToday.sentAt, u.timezone) === todayKey) continue;
 
     // Pick suppressed pushes from the last 24h.
     const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);

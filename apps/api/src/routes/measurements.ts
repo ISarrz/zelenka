@@ -64,7 +64,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
     const device = await prisma.device.findUnique({
       where: { id: req.deviceId! },
       include: {
-        user: { select: { id: true, quietHoursStartMin: true, quietHoursEndMin: true } },
+        user: { select: { id: true, quietHoursStartMin: true, quietHoursEndMin: true, timezone: true } },
         plant: { include: { species: true } },
       },
     });
@@ -127,6 +127,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
         quietHours: {
           startMin: device.user.quietHoursStartMin ?? null,
           endMin: device.user.quietHoursEndMin ?? null,
+          timezone: device.user.timezone,
         },
       });
 

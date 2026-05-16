@@ -1,6 +1,7 @@
 import { prisma } from '../db.js';
 import { sendPushToUser } from './push.js';
 import type { CareThresholds } from './thresholds.js';
+import { minutesOfDayInTz } from './tz.js';
 import type { RingStatus, Verdict } from './verdict.js';
 
 // Triggers we ship in Sprint 4. Mapped to the design doc's 12-trigger table —
@@ -55,11 +56,12 @@ interface MeasurementCtx {
 interface QuietHours {
   startMin: number | null;
   endMin: number | null;
+  timezone: string;
 }
 
 function inQuietHours(now: Date, q: QuietHours): boolean {
   if (q.startMin == null || q.endMin == null) return false;
-  const m = now.getHours() * 60 + now.getMinutes();
+  const m = minutesOfDayInTz(now, q.timezone);
   // Windows that wrap midnight (e.g. 23:00 → 07:00) need OR; same-day uses AND.
   return q.startMin <= q.endMin
     ? m >= q.startMin && m <= q.endMin

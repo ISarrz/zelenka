@@ -22,6 +22,8 @@ export const config = {
   vapidPublicKey: optional('VAPID_PUBLIC_KEY', ''),
   vapidPrivateKey: optional('VAPID_PRIVATE_KEY', ''),
   vapidSubject: optional('VAPID_SUBJECT', 'mailto:admin@zelenka-api.ru'),
+  speciesPhotosDir: optional('SPECIES_PHOTOS_DIR', '/photos'),
+  perenualPhotosDir: optional('PERENUAL_PHOTOS_DIR', '/perenual-photos'),
 };
 
 export const isProd = config.env === 'production';

@@ -15,7 +15,17 @@ export function AuthConsumePage() {
     }
     api
       .consumeMagicLink(token)
-      .then(() => navigate('/', { replace: true }))
+      .then(async () => {
+        // Pin the user's actual browser timezone on first login so quiet
+        // hours / morning digest don't drift if the server moves regions.
+        try {
+          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          if (tz) await api.updateSettings({ timezone: tz });
+        } catch {
+          /* timezone is a nice-to-have; never block login on it */
+        }
+        navigate('/', { replace: true });
+      })
       .catch((err: Error) => setError(err.message));
   }, [params, navigate]);
 

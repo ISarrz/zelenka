@@ -161,7 +161,21 @@ export const api = {
     request<{ status: string }>(`/plants/${plantId}/events/${eventId}`, {
       method: 'DELETE',
     }),
+  meSettings: () => request<{ user: SettingsUser }>('/me/settings'),
+  updateSettings: (body: Partial<Pick<SettingsUser, 'timezone' | 'quietHoursStartMin' | 'quietHoursEndMin'>>) =>
+    request<{ user: SettingsUser }>('/me/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 };
+
+export interface SettingsUser {
+  id: string;
+  email: string;
+  timezone: string;
+  quietHoursStartMin: number | null;
+  quietHoursEndMin: number | null;
+}
 
 export interface CareEvent {
   id: string;

@@ -81,14 +81,24 @@ export function PlantCardPage() {
 
   return (
     <main className="min-h-full p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
-      <header className="flex items-baseline justify-between gap-3">
+      <header className="flex items-center justify-between gap-3">
         <button
           onClick={() => navigate(-1)}
           className="text-status-ok text-sm underline"
         >← Назад</button>
-        <div className="text-right">
-          <h1 className="text-xl font-semibold leading-tight">{title}</h1>
-          {subtitle && <p className="text-xs text-neutral-500 italic">{subtitle}</p>}
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <h1 className="text-lg font-semibold leading-tight">{title}</h1>
+            {subtitle && <p className="text-xs text-neutral-500 italic">{subtitle}</p>}
+          </div>
+          {device.plant?.species?.defaultImageUrl && (
+            <img
+              src={device.plant.species.defaultImageUrl}
+              alt=""
+              className="w-12 h-12 rounded-full object-cover border border-neutral-200 dark:border-neutral-800"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          )}
         </div>
       </header>
 
