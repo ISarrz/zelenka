@@ -1,0 +1,16 @@
+# Defaults — `idf.py menuconfig` overrides these per developer.
+CONFIG_IDF_TARGET="esp32c3"
+
+# We have one task per phase, no SMP; keep main task stack roomy enough for HTTP.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Wi-Fi station — Power saving stays on (we sleep between samples anyway).
+CONFIG_ESP_WIFI_ENABLE_WPA3_SAE=y
+
+# HTTPS client is included even if we POST to plain HTTP in dev — Sprint 1 will
+# switch to TLS once the server is behind Caddy.
+CONFIG_ESP_TLS_USING_MBEDTLS=y
+CONFIG_MBEDTLS_TLS_CLIENT=y
+
+# Use the system event loop default sizes — adequate for a single Wi-Fi
+# connection.
