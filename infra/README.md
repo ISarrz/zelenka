@@ -43,9 +43,26 @@ docker compose -f infra/docker-compose.yml --env-file infra/.env.dev up --build
 ## Deploy to the server
 
 ```bash
-# from this machine:
-scp infra/perenual-seed/perenual.sql.gz server:/path/to/zelenka/infra/perenual-seed/
-# then ssh in and:
-git pull
+# from this machine, rsync the working tree. The exclude list keeps secrets
+# (.env.dev/.env.prod live only on the server) and binary artifacts off the
+# wire. The `infra/.env.*` exclude is critical — without it `--delete` will
+# remove the server's env file.
+rsync -az --delete \
+  --exclude='.git/' --exclude='node_modules/' --exclude='build/' \
+  --exclude='dist/' --exclude='cmake-build-*/' --exclude='managed_components/' \
+  --exclude='sdkconfig' --exclude='sdkconfig.old' --exclude='*.log' \
+  --exclude='infra/.env.*' \
+  ./ root@<server>:/srv/zelenka/
+
+# the perenual seed is gitignored, send it separately when refreshed:
+scp infra/perenual-seed/perenual.sql.gz root@<server>:/srv/zelenka/infra/perenual-seed/
+
+# then on the server:
+cd /srv/zelenka
 docker compose -f infra/docker-compose.yml --env-file infra/.env.prod up -d --build
 ```
+
+If you ever **do** want to rotate `.env.prod` passwords, remember the Postgres
+volumes won't accept the new passwords automatically — initdb runs only on
+empty volumes. Either `ALTER USER ... WITH PASSWORD '…';` inside each DB or
+nuke the volumes (and the data).
