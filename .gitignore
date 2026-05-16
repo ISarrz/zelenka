@@ -22,3 +22,7 @@ dist/
 # Perenual seed dump — refreshed via infra/perenual-seed/refresh.sh
 infra/perenual-seed/*.sql.gz
 infra/perenual-seed/*.sql
+
+# OTA firmware binaries — published via infra/firmware-publish.sh
+infra/firmware-releases/*.bin
+infra/firmware-releases/manifest.json

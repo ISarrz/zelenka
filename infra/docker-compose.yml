@@ -62,6 +62,11 @@ services:
       WEB_BASE_URL: ${WEB_BASE_URL}
       MAIL_TRANSPORT: ${MAIL_TRANSPORT:-console}
       PLANT_ID_API_KEY: ${PLANT_ID_API_KEY:-}
+      FIRMWARE_DIR: /firmware
+    volumes:
+      # Read-only firmware artifact directory served via /api/firmware/*.
+      # Populated by infra/firmware-publish.sh on the host.
+      - ./firmware-releases:/firmware:ro
     depends_on:
       app-db:
         condition: service_healthy

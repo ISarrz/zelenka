@@ -5,6 +5,7 @@ import Fastify from 'fastify';
 import { config, isProd } from './config.js';
 import { authRoutes } from './routes/auth.js';
 import { deviceRoutes } from './routes/devices.js';
+import { firmwareRoutes } from './routes/firmware.js';
 import { healthRoutes } from './routes/health.js';
 import { measurementRoutes } from './routes/measurements.js';
 import { plantRoutes } from './routes/plants.js';
@@ -31,6 +32,7 @@ await app.register(authRoutes);
 await app.register(deviceRoutes);
 await app.register(measurementRoutes);
 await app.register(plantRoutes);
+await app.register(firmwareRoutes);
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'shutting down');

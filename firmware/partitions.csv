@@ -1,5 +1,17 @@
+# OTA-enabled partition table for 4 MB flash.
+# nvs     : Wi-Fi creds + zelenka cfg (24 KB)
+# otadata : tracks which OTA slot is currently active (8 KB)
+# ota_0   : primary app slot (1.5 MB) — boots here by default after first OTA
+# ota_1   : secondary app slot (1.5 MB) — written into during OTA
+# storage : LittleFS for offline sample-buffer overflow (512 KB)
+#
+# After the first esp_https_ota cycle, the chip alternates between ota_0 and
+# ota_1, with otadata pointing to the most recently verified image. If the
+# new image fails its first boot, the bootloader rolls back to the prior
+# slot automatically.
 # Name,   Type, SubType,  Offset,   Size,   Flags
 nvs,      data, nvs,      0x9000,   24K,
-phy_init, data, phy,      0xf000,   4K,
-factory,  app,  factory,  0x10000,  2M,
-storage,  data, spiffs,   ,         1M,
+otadata,  data, ota,      0xf000,   8K,
+ota_0,    app,  ota_0,    0x20000,  1500K,
+ota_1,    app,  ota_1,    ,         1500K,
+storage,  data, spiffs,   ,         512K,

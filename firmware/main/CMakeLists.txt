@@ -6,6 +6,7 @@ idf_component_register(
         "http_post.c"
         "led.c"
         "nvs_cfg.c"
+        "ota.c"
         "provisioning.c"
         "touch.c"
     INCLUDE_DIRS "."
@@ -15,6 +16,8 @@ idf_component_register(
         esp_event
         esp_http_client
         esp_http_server
+        esp_https_ota
+        app_update
         esp_netif
         esp_timer
         esp_adc

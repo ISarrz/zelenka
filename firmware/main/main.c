@@ -29,6 +29,7 @@
 #include "http_post.h"
 #include "led.h"
 #include "nvs_cfg.h"
+#include "ota.h"
 #include "provisioning.h"
 #include "sensors.h"
 #include "touch.h"
@@ -190,7 +191,15 @@ void app_main(void) {
                 cfg.api_url, cfg.device_token,
                 batch_samples, batch_epochs, batch_count);
             zelenka_led_set(err == ESP_OK ? ZELENKA_LED_OK : ZELENKA_LED_ERROR);
-            if (err == ESP_OK) batch_count = 0;
+            if (err == ESP_OK) {
+                batch_count = 0;
+                // First fully-successful cycle on a new OTA image — accept it.
+                ota_mark_valid_if_pending();
+                // Check for newer firmware. Function reboots on success.
+                char base[64];
+                ota_base_from_url(cfg.api_url, base, sizeof(base));
+                ota_check_and_apply(base);
+            }
         } else {
             ESP_LOGW(TAG, "burst: wifi unavailable, samples discarded");
             zelenka_led_set(ZELENKA_LED_ERROR);
@@ -233,6 +242,10 @@ void app_main(void) {
                 if (err == ESP_OK) {
                     batch_count = 0;
                     zelenka_led_set(ZELENKA_LED_OK);
+                    ota_mark_valid_if_pending();
+                    char base[64];
+                    ota_base_from_url(cfg.api_url, base, sizeof(base));
+                    ota_check_and_apply(base);
                 } else {
                     zelenka_led_set(ZELENKA_LED_ERROR);
                 }
