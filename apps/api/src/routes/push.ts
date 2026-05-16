@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { requireUser } from '../lib/auth.js';
 import { sendPushToUser } from '../lib/push.js';
+import { scanScheduledTriggers } from '../lib/scheduled_rules.js';
 
 const Subscribe = z.object({
   endpoint: z.string().url(),
@@ -57,6 +58,11 @@ export async function pushRoutes(app: FastifyInstance): Promise<void> {
       url: '/',
     });
     return r;
+  });
+
+  app.post('/api/push/scan-now', { preHandler: requireUser }, async () => {
+    await scanScheduledTriggers();
+    return { status: 'ok' };
   });
 
   app.get('/api/me/quiet-hours', { preHandler: requireUser }, async (req) => {

@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
 import Fastify from 'fastify';
 import { config, isProd } from './config.js';
+import { scanScheduledTriggers } from './lib/scheduled_rules.js';
 import { authRoutes } from './routes/auth.js';
 import { deviceRoutes } from './routes/devices.js';
 import { eventRoutes } from './routes/events.js';
@@ -38,8 +39,11 @@ await app.register(eventRoutes);
 await app.register(firmwareRoutes);
 await app.register(pushRoutes);
 
+let scheduledTimer: NodeJS.Timeout | null = null;
+
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, 'shutting down');
+  if (scheduledTimer) clearInterval(scheduledTimer);
   await app.close();
   process.exit(0);
 };
@@ -47,3 +51,14 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 await app.listen({ host: '0.0.0.0', port: config.port });
+
+// Once-per-10-min scheduler for the time-based push triggers
+// (light_low, air_dry, sensor_silent, onboarding_*, morning_digest).
+const SCHEDULED_INTERVAL_MS = 10 * 60 * 1000;
+scheduledTimer = setInterval(() => {
+  scanScheduledTriggers().catch((err) => app.log.error({ err }, 'scheduled scan failed'));
+}, SCHEDULED_INTERVAL_MS);
+// First scan ~30s after boot so we don't slam the DB during startup churn.
+setTimeout(() => {
+  scanScheduledTriggers().catch((err) => app.log.error({ err }, 'first scheduled scan failed'));
+}, 30_000);

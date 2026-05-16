@@ -19,6 +19,11 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
+# tzdata so the container honors $TZ (Europe/Moscow) — without it, JS Date
+# is stuck in UTC even with the env var set, and the morning-digest
+# trigger can't compute quiet-hours-end in the user's local time.
+RUN apk add --no-cache tzdata
+
 COPY package.json package-lock.json* ./
 RUN --mount=type=cache,target=/root/.npm \
     npm install --omit=dev && npm cache clean --force
