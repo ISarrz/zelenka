@@ -15,6 +15,10 @@ import {
   isStandalonePWA,
   subscribeToPush,
 } from '../lib/push';
+import {
+  IOSInstallPrompt,
+  shouldShowIOSInstall,
+} from '../components/IOSInstallPrompt';
 
 type Status = 'loading' | 'no-device' | 'no-data' | 'ready';
 const ACTIVE_KEY = 'zelenka_active_device';
@@ -30,6 +34,7 @@ export function HomePage() {
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [iosPromptOpen, setIosPromptOpen] = useState(() => shouldShowIOSInstall());
 
   // List devices once; pick a sensible active id; keep the list in state.
   useEffect(() => {
@@ -149,6 +154,8 @@ export function HomePage() {
           <code className="select-all break-all">{device.deviceToken}</code>
         </p>
       )}
+
+      {iosPromptOpen && <IOSInstallPrompt onClose={() => setIosPromptOpen(false)} />}
 
       {pickerOpen && (
         <PlantPicker
