@@ -6,6 +6,7 @@ idf_component_register(
         "http_post.c"
         "led.c"
         "nvs_cfg.c"
+        "offline_buffer.c"
         "ota.c"
         "provisioning.c"
         "touch.c"
@@ -19,6 +20,7 @@ idf_component_register(
         esp_https_ota
         app_update
         esp_netif
+        spiffs
         esp_timer
         esp_adc
         lwip

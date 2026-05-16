@@ -29,6 +29,7 @@
 #include "http_post.h"
 #include "led.h"
 #include "nvs_cfg.h"
+#include "offline_buffer.h"
 #include "ota.h"
 #include "provisioning.h"
 #include "sensors.h"
@@ -105,6 +106,22 @@ static void sample_averaged(sensor_reading_t *out) {
                      out->has_soil = true; }
 }
 
+// Drain SPIFFS-buffered batches (oldest first) for up to a few iterations.
+// Stops at first failed POST or empty buffer.
+static void flush_offline_pending(const zelenka_cfg_t *cfg) {
+    for (int i = 0; i < 5; i++) {
+        sensor_reading_t buf[CONFIG_ZELENKA_BATCH_SIZE];
+        int64_t epochs[CONFIG_ZELENKA_BATCH_SIZE];
+        size_t got = 0, remaining = 0;
+        if (offline_buffer_drain_read(buf, epochs, CONFIG_ZELENKA_BATCH_SIZE, &got, &remaining) != ESP_OK)
+            return;
+        if (got == 0) return;
+        if (http_post_batch(cfg->api_url, cfg->device_token, buf, epochs, got) != ESP_OK) return;
+        offline_buffer_commit(got);
+        if (remaining == 0) return;
+    }
+}
+
 static bool sync_ntp_blocking(void) {
     esp_sntp_config_t cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
     cfg.sync_cb = NULL;
@@ -158,6 +175,7 @@ void app_main(void) {
     }
 
     sensors_init();
+    offline_buffer_init();
 
     if (!did_initial_burst) {
         // ---- Initial smoke-test burst (~70s after power-on) -----------------
@@ -193,17 +211,20 @@ void app_main(void) {
             zelenka_led_set(err == ESP_OK ? ZELENKA_LED_OK : ZELENKA_LED_ERROR);
             if (err == ESP_OK) {
                 batch_count = 0;
-                // First fully-successful cycle on a new OTA image — accept it.
+                flush_offline_pending(&cfg);
                 ota_mark_valid_if_pending();
-                // Check for newer firmware. Function reboots on success.
                 char base[64];
                 ota_base_from_url(cfg.api_url, base, sizeof(base));
                 ota_check_and_apply(base);
+            } else {
+                offline_buffer_append(batch_samples, batch_epochs, batch_count);
+                batch_count = 0;
             }
         } else {
-            ESP_LOGW(TAG, "burst: wifi unavailable, samples discarded");
-            zelenka_led_set(ZELENKA_LED_ERROR);
+            ESP_LOGW(TAG, "burst: wifi unavailable, spilling to disk");
+            offline_buffer_append(batch_samples, batch_epochs, batch_count);
             batch_count = 0;
+            zelenka_led_set(ZELENKA_LED_ERROR);
         }
         did_initial_burst = true;
         vTaskDelay(pdMS_TO_TICKS(800));
@@ -242,16 +263,21 @@ void app_main(void) {
                 if (err == ESP_OK) {
                     batch_count = 0;
                     zelenka_led_set(ZELENKA_LED_OK);
+                    flush_offline_pending(&cfg);
                     ota_mark_valid_if_pending();
                     char base[64];
                     ota_base_from_url(cfg.api_url, base, sizeof(base));
                     ota_check_and_apply(base);
                 } else {
+                    offline_buffer_append(batch_samples, batch_epochs, batch_count);
+                    batch_count = 0;
                     zelenka_led_set(ZELENKA_LED_ERROR);
                 }
                 vTaskDelay(pdMS_TO_TICKS(600));
             } else {
-                ESP_LOGW(TAG, "wifi failed, samples held for next cycle");
+                ESP_LOGW(TAG, "wifi failed, spilling to disk");
+                offline_buffer_append(batch_samples, batch_epochs, batch_count);
+                batch_count = 0;
                 zelenka_led_set(ZELENKA_LED_ERROR);
                 vTaskDelay(pdMS_TO_TICKS(600));
             }
