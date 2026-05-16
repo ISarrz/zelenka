@@ -2,66 +2,152 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Repository layout
+## Project pivot (2026-05)
 
-Monorepo with two subprojects on the same `main` branch:
+The project was redesigned. The **target architecture** below replaces the original Flutter + C++ implementation. Two source-of-truth documents live at the repo root:
 
-- `app/` — Flutter mobile app (the client).
-- `server/` — C++20 HTTP backend serving `http://zelenka-api.ru` on port 80.
-- `tests/` — cross-cutting test utilities (e.g. sensor data simulator) when present.
+- `plant-sensor-mvp-plan(1).md` — phased MVP plan, hardware decisions, scope, risks.
+- `zelenka-design-summary.html` — wireframes and UX decisions for every screen.
 
-They build and version together but have independent toolchains. `cd` into the relevant subdirectory before running build/test commands.
+Both are required reading before touching anything new. The MD has the engineering decisions; the HTML has the product/UX decisions. **They override anything in this file if there is a conflict.**
 
-The two original repositories `github.com/ISarrz/zelenka` and `github.com/ISarrz/zelenka_server` are now archival — all new work lands in this monorepo.
+### Status of existing subprojects
 
-## app/ — Flutter app
+| Subdir | Status |
+|---|---|
+| `app/` (Flutter mobile app) | **Legacy.** Being replaced by a PWA. Do not extend with new features. Bug fixes only if explicitly asked. |
+| `server/` (C++20 / httplib / MySQL backend) | **Legacy.** Being replaced by Node.js + Fastify + Prisma + PostgreSQL. Do not extend. |
+| `plants_db/` (Python ETL) | **Kept**, but retargets output: instead of `server/initdb/plants_catalog.sql` (MySQL), it will produce a Postgres seed for the new backend, filtered to the curated **top ~50 species** (not 200). |
+| `tests/` (sensor data simulator) | Probably reusable against the new backend once the device-ingest endpoint exists. |
 
-### Common commands
-Run from `app/`:
-- `flutter pub get` — install deps.
-- `flutter run` — run on the connected device/emulator.
-- `flutter test` — run the test suite (`test/widget_test.dart`).
-- `flutter test test/widget_test.dart --plain-name "<name>"` — run a single test by name.
-- `flutter analyze` — lint (config in `analysis_options.yaml`, uses `flutter_lints`).
-- `dart run build_runner build --delete-conflicting-outputs` — regenerate Hive adapters (`*.g.dart`) after editing `@HiveType` models such as `lib/repositories/models/user.dart`.
-- `dart run flutter_launcher_icons` — regenerate launcher icons from `assets/icon.png`.
+New code lands in new top-level directories (see "Target layout" below), not inside `app/` or `server/`.
 
-### Architecture
-- **DI:** `GetIt` is configured in `lib/main.dart::setupDependencies()`. `AbstractUserRepository` is registered as a singleton wrapping `Dio`; features resolve it via `GetIt.I<AbstractUserRepository>()`.
-- **State:** `flutter_bloc`. Each feature under `lib/features/<feature>/` follows the layout `bloc/`, `view/`, `widgets/` (see `auth_page`, `register_page`). New screens should follow this layout. Pure UI screens like `home_page` and `ble_config_page` skip the `bloc/` folder.
-- **Routing:** Static map in `lib/router/router.dart` (`/auth`, `/register`, `/home`, `/ble-config`). The initial route is decided in `main.dart` based on credentials in `SharedPreferences` and the cached `User` in the Hive `userBox`.
-- **Persistence:** Two complementary stores — `SharedPreferences` holds `saved_login` / `saved_password`; Hive box `userBox` (key `currentUser`) holds the `User` object for offline login fallback. If the network is unreachable but a cached user exists, `main.dart` routes to `/home` in offline mode.
-- **Networking:** All HTTP goes through `lib/repositories/user/user_repository.dart` against `http://zelenka-api.ru`. Endpoints: `/user/auth`, `/user/register`, `/user/insert-device`, `/user/get-devices`, `/user/get-device-monitorings`, `/user/remove-device`. Auth is "send login+password with every request" — there is no token.
-- **BLE:** `flutter_blue_plus` + `permission_handler` for the `ble_config_page` flow that provisions devices.
+---
 
-## server/ — C++ backend
+## Target layout
 
-### Common commands
-Run from `server/`:
-- `docker compose up --build` — preferred path. Brings up a MySQL 8 container and the app container together; `.env` (in this directory) supplies DB and API secrets, and the app container reads them as environment variables. The app listens on host port 80.
-- Local CMake build (requires `libmysqlcppconn-dev`, `nlohmann-json3-dev`, C++20 toolchain):
-  ```
-  cmake -S . -B build && cmake --build build -j
-  ```
-  Produces `build/zelenka_server`. CLion's `cmake-build-debug/` is also checked in for IDE workflows.
-- Run: `./build/zelenka_server server` (the `config` subcommand is reserved per `scripts/main.cpp::ShowHelp` but not yet wired up — the server reads config from env vars).
-- There are no automated tests.
+```
+zelenka/
+├── apps/
+│   ├── web/         # PWA — React + Vite + TS + Tailwind + shadcn/ui
+│   └── api/         # Backend — Node.js + Fastify + TS + Prisma + PostgreSQL
+├── firmware/        # ESP-IDF project for ESP32-C3
+├── plants_db/       # Curated plant DB ETL (kept, retargeted to Postgres seed)
+├── app/             # LEGACY Flutter app (frozen)
+├── server/          # LEGACY C++ backend (frozen)
+├── tests/           # Cross-cutting test utilities
+├── plant-sensor-mvp-plan(1).md
+└── zelenka-design-summary.html
+```
 
-### Architecture
-- **Entry point:** `scripts/main.cpp` calls `config::InitConfig` (loads env vars into `config::` globals) and then constructs `Server()`, which blocks on `httplib::Server::listen("0.0.0.0", 80)`. On startup it dumps every user to stdout — useful for sanity-checking the DB connection.
-- **HTTP layer:** Built on a vendored `httplib.h` (single header at the project root). `modules/Server/Server.cpp` constructs all repositories and registers four route groups via static methods on `Routes` (`Routes.hpp`):
-  - `RegisterGreetingRoute` (`Routes/Debug/Debug.cpp`) — `GET /hi`
-  - `RegisterUserRoutes` (`Routes/User/User.cpp`) — `POST /user/{register,auth,get-devices,insert-device,remove-device,get-device-monitorings}`
-  - `RegisterSensorRoute` (`Routes/Device/Device.cpp`) — `POST /device/insert-monitoring` (called by ESP/sensor devices, not the mobile app)
-  - `RegisterAdminRoutes` (`Routes/Admin/Admin.cpp`) — `POST /admin/{user,device}/{get-all,remove-by-id,insert}`
-- **Unusual build pattern — admin routes are concatenated, not linked:** `Routes/Admin/Admin.cpp` does `#include "User.cpp"` and `#include "Device.cpp"` to pull the admin sub-route definitions in as a single translation unit. Those sub-files are deliberately **not** listed in `CMakeLists.txt`. When adding a new admin route file, follow the same pattern (add a `#include "Foo.cpp"` to `Admin.cpp`) rather than adding it to `CMakeLists.txt`, or you'll get duplicate-symbol link errors. The non-admin routes (`User/User.cpp`, `Device/Device.cpp`) are normal TUs and *are* listed in `CMakeLists.txt`.
-- **Database:** MySQL via `mysql-connector-c++`. `Database` (in `modules/Database/Database/Database.cpp`) owns the `sql::Connection`. Each repository (`UserRepository`, `DeviceRepository`, `DeviceMonitoringRepository`) takes a `Database*` and exposes prepared-statement-based CRUD; abstracts live next to them as `AbstractXxxRepository.hpp`. The umbrella header `modules/Database/Database.hpp` re-exports everything in the layer — include it from new code rather than the inner headers.
-- **Config:** `modules/Config/Config.cpp` reads env vars `DB_USER`, `DB_PASSWORD`, `YANDEX_KEY`, `YANDEX_SECRET_KEY`, `SECRET_KEY` into globals in the `config::` namespace. `DB_HOST` and `DB_NAME` are read directly by `Database` from the environment. `docker-compose.yml` overrides `DB_HOST=db` for the app container.
-- **Auth model:** No sessions/tokens. Every authenticated route accepts `{login, password}` in the JSON body and re-validates against the DB. Admin endpoints currently rely on the same scheme.
+This structure is **planned**, not yet created. As subprojects come online, document their toolchain commands here.
 
-### CMake gotcha
-`CMakeLists.txt` enumerates every source file by hand. After adding a new non-admin `.cpp`, you must add it to the `add_executable` list or it won't be compiled. (See the admin-routes note above for the exception.)
+---
 
-## Secrets
-- `server/.env` contains real-looking DB and API credentials. The root `.gitignore` excludes `**/.env`, so it is **not** tracked in the monorepo (a clean break from the old `zelenka_server` repo where it was committed). Re-create it locally from `server/.env.example` if one is added later.
-- `ssh.txt` at the repo root holds prod root SSH credentials. Also gitignored. Never paste either into commits, PR bodies, or external systems.
+## Product principles (binding for UX/code)
+
+These are not style preferences — they are decisions Claude Code must respect when writing screens, copy, push texts, or notification logic.
+
+- **Traffic light home screen.** The main screen answers "is everything OK?" in one second via a colored ring around the plant photo. Five modes (incl. 48-hour "cold start" = dashed gray ring, numbers without verdict).
+- **Sensor is the source of truth.** No "I watered / I moved it" buttons. All care actions are detected from sensor jumps. Do not add manual logging UI for things the sensor measures.
+- **Notifications are actions, not alarms.** Push text is an instruction with numbers ("Полейте 150 мл тёплой отстоянной воды"), not a problem report ("Влажность ниже 30%"). Neutral tone, no exclamations, no "осторожно/срочно". Title ≤40 chars, body ≤100. Plant name in title.
+- **Push only on two event types** (defined in design doc § "Когда вообще приходит пуш") with explicit anti-spam rules: cooldowns, daily limit, quiet hours muting everything by default (urgent night events surface in a single morning digest).
+- **Status color is carried by ring / cell border / icons, never by text.** Body copy stays neutral and dark-theme-safe.
+- **No gamification, no badges, no streaks, no social feed, no chatty "AI tips".** If a feature smells like marketing fluff, it is out of MVP.
+- **Russian only on MVP.** Copy is written in Russian first; translation is a separate effort, not a `.format()` away.
+
+When implementing a screen, cross-check the corresponding section of `zelenka-design-summary.html` for the wireframe and the "Ключевые решения" bullets.
+
+---
+
+## Tech decisions (binding)
+
+### Hardware (`firmware/`)
+
+- **Board:** ESP32-C3 Super Mini (4 MB flash). Pinout in `plant-sensor-mvp-plan(1).md` § 3.1.
+- **Sensors:** BME280 (I2C, temp/humidity/pressure) + BH1750/GY-30 (I2C, lux) + capacitive V1.2 soil moisture (ADC on GPIO4). Shared I2C on GPIO8 (SDA) / GPIO9 (SCL).
+- **Framework:** **ESP-IDF**, not Arduino.
+- **Power:** Li-Po 3.7 V 450 mAh + TP4056 charger + boost converter. Lower TP4056 current to ~225 mA via resistor swap. Reset button on GPIO10 (long-press → wipe NVS → SoftAP).
+- **Cycle:** measure every 10 min, batch POST every hour (6 readings). Ring buffer in RTC RAM (~8 KB / ~3 days). Out-of-band send when a value crosses a critical threshold. LittleFS fallback on prolonged offline.
+- **Provisioning:** SoftAP + captive portal at `192.168.4.1`. Device-ID is read from the AP SSID — **do not ask the user to type it in.**
+- **OTA:** HTTPS, planned from day one (don't bolt on later).
+- **Battery indicator is software-only.** No voltage divider. Device sends `cycles_since_charge` + `last_full_charge_timestamp` in NVS with every batch; server estimates `battery_estimate ∈ {full, medium, low, critical}` using a per-device-calibrated `cycles_per_full_battery`. Self-learning: every "marked charged → next marked charged" cycle refines the per-device value. "I charged it" button in PWA tells server to push a reset command on next device check-in.
+- **Phase 0 must verify** (decisions hinge on real numbers): boost-converter quiescent current (target < 200 µA) and Wi-Fi antenna reach through 1–2 interior walls. Both can sink the autonomy target (1.5–2 months) or force a hardware change.
+
+### Backend (`apps/api/`)
+
+- **Stack:** Node.js + TypeScript + **Fastify** + **Prisma** + **PostgreSQL**.
+- **Hosting:** Railway / Render / Fly.io for the API, Neon (or managed PG) for the DB.
+- **Auth:**
+  - **Users:** magic link to email (Resend / Postmark). No password. Name is optional, captured later.
+  - **Devices:** `device_token`, **not** user email+password. Tokens issued at pairing.
+- **Push:** Web Push API + VAPID + `web-push` library. Subscription on the front; sending on the back; deep links open the relevant plant card.
+- **Plant.id (Kindwise) — proxied through the backend** so the API key never reaches the client. **3 identifications/week/user, rolling 7 days**, enforced server-side. Confidence threshold 80% (auto-apply ≥80%, top-3 picker <80%, manual fallback to curated DB or "общий профиль" / generic profile if exotic). Plant.id response is **not cached for re-pick** — re-identification = new request = one credit. One request = one credit regardless of how many photos (1–3) are attached. Sensor reset does **not** reset the user's weekly quota.
+- **Plant knowledge:** the curated top-50 DB (RHS / Missouri Botanical Garden / IFAS, cross-checked) is the primary source. Perenual is fallback with a visible "общие рекомендации, могут быть неточны" note. An `overrides` table (user_id + plant_species_id) is reserved for future crowdsourcing — schema in from day one, no UI yet.
+- **DB schema** at minimum: `users, devices, plants, plant_species, measurements, care_log, notifications, push_subscriptions, overrides, device_charges` (last one drives the cycles-per-battery self-learning).
+- **Observability:** Sentry (free) + an uptime probe + Plausible/Umami/PostHog free tier for product analytics.
+- **No sessions on the device path** — devices authenticate by `device_token` per request. User routes use magic-link sessions.
+
+### Frontend (`apps/web/`)
+
+- **Stack:** React + Vite + TypeScript + Tailwind + **shadcn/ui**.
+- **PWA:** `vite-plugin-pwa`, Service Worker, manifest, icons, splash. Install flow is **mandatory on iOS** (Web Push only works in installed PWA) — design doc has the 3-step "Add to Home Screen" walkthrough that must be implemented faithfully. On Android, Chrome's install prompt is used and the screen is skippable.
+- **Hosting:** Vercel / Cloudflare Pages.
+- **Landing:** QR on the device box carries a query param that **skips the landing** and goes straight to login. Magic-link flow has a 30 s resend cooldown.
+- **Battery indicator:** four qualitative states only (full/medium/low/critical) — never show a percent number, only a rough "≈N days remaining" hint after first full cycle. Tooltip explains "estimate based on usage". "Я зарядил датчик" button sits next to it.
+- **Multi-device / multi-plant** is in MVP scope. Dropdown picker in the header, swipe to switch the focused plant on the main screen, indicator dots, filter chip in the events feed. Wireframes in design doc § "Несколько растений".
+
+### `plants_db/` retarget
+
+The pipeline structure (`raw_* → species_curated → mart`) is unchanged, but:
+
+- The **mart filter** narrows from `popular_species` (200) to the **curated top-50** referenced in the MVP plan. The 50-species list itself is a Phase 0 deliverable and is not yet committed.
+- The **export target** changes from MySQL (`server/initdb/plants_catalog.sql`) to a Postgres seed consumed by Prisma's seeding mechanism (e.g. `apps/api/prisma/seed.ts` or a `.sql` companion). The exact format will be decided once the Prisma schema lands.
+- Group aggregation (`plant_groups` with default care ranges) is still useful as a fallback for "общий профиль" — keep it.
+
+Until the new backend lands, `plants_db/` should not be re-run for production; the existing `server/initdb/plants_catalog.sql` is for the legacy server only.
+
+---
+
+## Phased plan (high-level — full version in `plant-sensor-mvp-plan(1).md` § 5)
+
+0. **Prep** — curate top-50, register Plant.id / domains / VAPID / Resend / Sentry, draw wireframes, **measure quiescent current and Wi-Fi reach**.
+1. **Backend skeleton** — Fastify + Prisma + schema + device endpoints + magic link + Plant.id proxy + battery estimation logic + deploy.
+2. **Firmware** — ESP-IDF, sensors, deep-sleep loop, RTC-RAM buffer, Wi-Fi batch send, captive portal, OTA, `cycles_since_charge`.
+3. **Frontend skeleton + onboarding** — PWA shell, magic link, pairing flow, identification (Plant.id), calibration, place-picking ("walk around 30 s"), traffic-light home, battery icon.
+4. **Notifications and actions** — server-side rule engine, 12 triggers (incl. low battery a week before estimated empty), overwatering guard, Web Push wiring, deep links.
+5. **Plant card and history** — full plant page, 7/30-day charts per parameter, care-event markers, history list, manual back-dated entries, multi-plant switching, post-first-cycle battery-days estimate.
+6. **Polish and real test** — 5 end-to-end runs with real users, rewrite copy out of "ChatGPT voice", edge cases (3-day sensor outage, identification dead-ends, broken sensor, "forgot to press 'I charged it'"), analytics, backups, monitoring.
+
+Realistic estimate: ~4 months at 20 h/week. Optimistic: ~10 weeks.
+
+---
+
+## Open questions / deferred decisions
+
+Tracked in `plant-sensor-mvp-plan(1).md` § 7 and `zelenka-design-summary.html` § "Открытые вопросы". Notable:
+
+- Exact Plant.id confidence threshold (80 % is a starting hypothesis).
+- Adaptive sampling rate (slower at night) — decided during firmware phase.
+- Whether to switch to a hardware battery gauge (MAX17048 / voltage divider) if software estimation drifts too far in real use.
+- Boost-converter choice pending Phase-0 current measurement.
+- Per-species notification copy (only Ficus is drafted in the design doc).
+- API contracts, push payload schema, device wire format, history retention, offline→online sync — to be designed alongside the backend.
+
+---
+
+## Secrets (unchanged from legacy)
+
+- `server/.env` — DB and API credentials for the **legacy** stack. Gitignored.
+- `ssh.txt` at repo root — prod root SSH credentials. Gitignored, never paste anywhere.
+- `perenual_key*.txt` at repo root — Perenual API keys for `plants_db/import_perenual.py`. Gitignored. Multiple files = multiple keys for free-tier quota rotation on 429.
+
+For the new stack, secrets will live in `apps/api/.env` (gitignored). Plant.id key, Resend key, VAPID keypair, database URL, Sentry DSN all go there.
+
+---
+
+## Working with Claude Code on this repo
+
+Per `plant-sensor-mvp-plan(1).md` § 8: always attach the relevant section of the MVP plan and the design doc when prompting on a new screen or endpoint. Without that context, decisions tend to drift back toward generic web-app patterns and away from the deliberate constraints above (no manual care buttons, sensor-driven detection, neutral copy, qualitative battery states, etc.).
+
+If you find yourself adding something not in the two source docs — pause and ask whether it belongs in MVP or is a postMVP backlog item.

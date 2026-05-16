@@ -1,6 +1,11 @@
 # Secrets — must never be committed
 ssh.txt
 **/.env
+perenual_key*.txt
+plant_id.txt
+plant_id*.txt
+plantNet_key.txt
+plantnet_key*.txt
 
 # OS / editor noise
 .DS_Store
