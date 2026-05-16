@@ -1,153 +1,232 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
 
-## Project pivot (2026-05)
+## Source of truth
 
-The project was redesigned. The **target architecture** below replaces the original Flutter + C++ implementation. Two source-of-truth documents live at the repo root:
+Two human-written design documents in `docs/` are the source of truth. They
+override anything below if there's a conflict:
 
-- `plant-sensor-mvp-plan(1).md` — phased MVP plan, hardware decisions, scope, risks.
-- `zelenka-design-summary.html` — wireframes and UX decisions for every screen.
+- `docs/mvp-plan.md` — phased MVP plan, hardware decisions, scope, risks.
+- `docs/design-summary.html` — wireframes and UX decisions per screen.
+- `docs/schema.jpg` — final wiring of the sensor hardware.
 
-Both are required reading before touching anything new. The MD has the engineering decisions; the HTML has the product/UX decisions. **They override anything in this file if there is a conflict.**
+Read the relevant section before touching code on a new feature.
 
-### Status of existing subprojects
-
-| Subdir | Status |
-|---|---|
-| `app/` (Flutter mobile app) | **Legacy.** Being replaced by a PWA. Do not extend with new features. Bug fixes only if explicitly asked. |
-| `server/` (C++20 / httplib / MySQL backend) | **Legacy.** Being replaced by Node.js + Fastify + Prisma + PostgreSQL. Do not extend. |
-| `plants_db/` (Python ETL) | **Kept**, but retargets output: instead of `server/initdb/plants_catalog.sql` (MySQL), it will produce a Postgres seed for the new backend, filtered to the curated **top ~50 species** (not 200). |
-| `tests/` (sensor data simulator) | Probably reusable against the new backend once the device-ingest endpoint exists. |
-
-New code lands in new top-level directories (see "Target layout" below), not inside `app/` or `server/`.
-
----
-
-## Target layout
+## Repo layout
 
 ```
-zelenka/
-├── apps/
-│   ├── web/         # PWA — React + Vite + TS + Tailwind + shadcn/ui
-│   └── api/         # Backend — Node.js + Fastify + TS + Prisma + PostgreSQL
-├── firmware/        # ESP-IDF project for ESP32-C3
-├── plants_db/       # Curated plant DB ETL (kept, retargeted to Postgres seed)
-├── app/             # LEGACY Flutter app (frozen)
-├── server/          # LEGACY C++ backend (frozen)
-├── tests/           # Cross-cutting test utilities
-├── plant-sensor-mvp-plan(1).md
-└── zelenka-design-summary.html
+apps/
+  api/          Fastify + TS + Prisma + Postgres (the backend)
+  web/          Vite + React + TS + Tailwind PWA (the client)
+firmware/       ESP-IDF project for ESP32-C3 Super Mini (the sensor)
+infra/
+  docker-compose.yml   full stack (app-db, perenual-db, api, web, caddy)
+  caddy/Caddyfile      reverse proxy + TLS
+  perenual-seed/       refresh.sh + the .sql.gz dump (gitignored, 38 MB)
+  perenual-init/       initdb hook that creates the read-only Perenual user
+docs/           mvp-plan.md, design-summary.html, schema.jpg
+plant_id.txt    Plant.id API key (gitignored)
+ssh.txt         prod SSH creds (gitignored)
 ```
 
-This structure is **planned**, not yet created. As subprojects come online, document their toolchain commands here.
+There is no separate `legacy/`. The original Flutter app and C++ backend
+were removed in the pivot commit; recover from git history if you ever
+need to look at them.
 
----
+## apps/api — backend
 
-## Product principles (binding for UX/code)
+Stack: Fastify 5 + Prisma 6 + Postgres 16 + Zod, all TypeScript, ESM
+(`type: module`), running on Node 22 in Docker.
 
-These are not style preferences — they are decisions Claude Code must respect when writing screens, copy, push texts, or notification logic.
+### Common commands
 
-- **Traffic light home screen.** The main screen answers "is everything OK?" in one second via a colored ring around the plant photo. Five modes (incl. 48-hour "cold start" = dashed gray ring, numbers without verdict).
-- **Sensor is the source of truth.** No "I watered / I moved it" buttons. All care actions are detected from sensor jumps. Do not add manual logging UI for things the sensor measures.
-- **Notifications are actions, not alarms.** Push text is an instruction with numbers ("Полейте 150 мл тёплой отстоянной воды"), not a problem report ("Влажность ниже 30%"). Neutral tone, no exclamations, no "осторожно/срочно". Title ≤40 chars, body ≤100. Plant name in title.
-- **Push only on two event types** (defined in design doc § "Когда вообще приходит пуш") with explicit anti-spam rules: cooldowns, daily limit, quiet hours muting everything by default (urgent night events surface in a single morning digest).
-- **Status color is carried by ring / cell border / icons, never by text.** Body copy stays neutral and dark-theme-safe.
-- **No gamification, no badges, no streaks, no social feed, no chatty "AI tips".** If a feature smells like marketing fluff, it is out of MVP.
-- **Russian only on MVP.** Copy is written in Russian first; translation is a separate effort, not a `.format()` away.
+Run inside the `api` container (or locally with `npm install` first):
 
-When implementing a screen, cross-check the corresponding section of `zelenka-design-summary.html` for the wireframe and the "Ключевые решения" bullets.
+- `npm run dev` — Fastify with tsx watch.
+- `npm run build` — `tsc`.
+- `npm start` — run compiled output.
+- `npm run prisma:generate` — regenerate Prisma client after schema edits.
+- `npx prisma db push` — apply schema to the connected DB (Sprint 0
+  strategy — no migration files yet). Switch to `prisma migrate dev` /
+  `migrate deploy` the first time the schema needs to evolve in Sprint 1.
 
----
+### Routes (Sprint 0)
 
-## Tech decisions (binding)
+All under `/api/*` so Caddy routes the whole prefix to this container with
+a single rule. The PWA always talks to its own origin's `/api/*`, no CORS
+in prod.
 
-### Hardware (`firmware/`)
+- `GET  /api/healthz`, `/api/readyz` — health probes.
+- `POST /api/auth/magic-link/request` `{email}` — creates user if needed,
+  emits a one-time token, sends URL via the `MAIL_TRANSPORT` (Sprint 0:
+  `console`).
+- `POST /api/auth/magic-link/consume` `{token}` — sets a session cookie.
+- `POST /api/auth/logout`, `GET /api/me`.
+- `GET  /api/devices`, `POST /api/devices` `{name}` — user CRUD.
+- `GET  /api/devices/:id/latest` — last measurement for a user's device.
+- `POST /api/device/measurements` — sensor write path. **Authenticated by
+  `Authorization: Bearer <deviceToken>`**, not by user session.
 
-- **Board:** ESP32-C3 Super Mini (4 MB flash). Pinout in `plant-sensor-mvp-plan(1).md` § 3.1.
-- **Sensors:** BME280 (I2C, temp/humidity/pressure) + BH1750/GY-30 (I2C, lux) + capacitive V1.2 soil moisture (ADC on GPIO4). Shared I2C on GPIO8 (SDA) / GPIO9 (SCL).
-- **Framework:** **ESP-IDF**, not Arduino.
-- **Power:** Li-Po 3.7 V 450 mAh + TP4056 charger + boost converter. Lower TP4056 current to ~225 mA via resistor swap. Reset button on GPIO10 (long-press → wipe NVS → SoftAP).
-- **Cycle:** measure every 10 min, batch POST every hour (6 readings). Ring buffer in RTC RAM (~8 KB / ~3 days). Out-of-band send when a value crosses a critical threshold. LittleFS fallback on prolonged offline.
-- **Provisioning:** SoftAP + captive portal at `192.168.4.1`. Device-ID is read from the AP SSID — **do not ask the user to type it in.**
-- **OTA:** HTTPS, planned from day one (don't bolt on later).
-- **Battery indicator is software-only.** No voltage divider. Device sends `cycles_since_charge` + `last_full_charge_timestamp` in NVS with every batch; server estimates `battery_estimate ∈ {full, medium, low, critical}` using a per-device-calibrated `cycles_per_full_battery`. Self-learning: every "marked charged → next marked charged" cycle refines the per-device value. "I charged it" button in PWA tells server to push a reset command on next device check-in.
-- **Phase 0 must verify** (decisions hinge on real numbers): boost-converter quiescent current (target < 200 µA) and Wi-Fi antenna reach through 1–2 interior walls. Both can sink the autonomy target (1.5–2 months) or force a hardware change.
+### Schema (Sprint 0)
 
-### Backend (`apps/api/`)
+`prisma/schema.prisma` — `User`, `MagicLinkToken`, `Session`, `Device`,
+`Measurement`. `Measurement` fields are all nullable so firmware can add
+sensors without DB migrations every time. Indexes on
+`(deviceId, measuredAt)`.
 
-- **Stack:** Node.js + TypeScript + **Fastify** + **Prisma** + **PostgreSQL**.
-- **Hosting:** Railway / Render / Fly.io for the API, Neon (or managed PG) for the DB.
-- **Auth:**
-  - **Users:** magic link to email (Resend / Postmark). No password. Name is optional, captured later.
-  - **Devices:** `device_token`, **not** user email+password. Tokens issued at pairing.
-- **Push:** Web Push API + VAPID + `web-push` library. Subscription on the front; sending on the back; deep links open the relevant plant card.
-- **Plant.id (Kindwise) — proxied through the backend** so the API key never reaches the client. **3 identifications/week/user, rolling 7 days**, enforced server-side. Confidence threshold 80% (auto-apply ≥80%, top-3 picker <80%, manual fallback to curated DB or "общий профиль" / generic profile if exotic). Plant.id response is **not cached for re-pick** — re-identification = new request = one credit. One request = one credit regardless of how many photos (1–3) are attached. Sensor reset does **not** reset the user's weekly quota.
-- **Plant knowledge:** the curated top-50 DB (RHS / Missouri Botanical Garden / IFAS, cross-checked) is the primary source. Perenual is fallback with a visible "общие рекомендации, могут быть неточны" note. An `overrides` table (user_id + plant_species_id) is reserved for future crowdsourcing — schema in from day one, no UI yet.
-- **DB schema** at minimum: `users, devices, plants, plant_species, measurements, care_log, notifications, push_subscriptions, overrides, device_charges` (last one drives the cycles-per-battery self-learning).
-- **Observability:** Sentry (free) + an uptime probe + Plausible/Umami/PostHog free tier for product analytics.
-- **No sessions on the device path** — devices authenticate by `device_token` per request. User routes use magic-link sessions.
+Plants, care rules, push subscriptions, plant↔species bindings — Sprint 1+.
 
-### Frontend (`apps/web/`)
+## apps/web — PWA
 
-- **Stack:** React + Vite + TypeScript + Tailwind + **shadcn/ui**.
-- **PWA:** `vite-plugin-pwa`, Service Worker, manifest, icons, splash. Install flow is **mandatory on iOS** (Web Push only works in installed PWA) — design doc has the 3-step "Add to Home Screen" walkthrough that must be implemented faithfully. On Android, Chrome's install prompt is used and the screen is skippable.
-- **Hosting:** Vercel / Cloudflare Pages.
-- **Landing:** QR on the device box carries a query param that **skips the landing** and goes straight to login. Magic-link flow has a 30 s resend cooldown.
-- **Battery indicator:** four qualitative states only (full/medium/low/critical) — never show a percent number, only a rough "≈N days remaining" hint after first full cycle. Tooltip explains "estimate based on usage". "Я зарядил датчик" button sits next to it.
-- **Multi-device / multi-plant** is in MVP scope. Dropdown picker in the header, swipe to switch the focused plant on the main screen, indicator dots, filter chip in the events feed. Wireframes in design doc § "Несколько растений".
+Stack: React 19 + Vite 6 + TypeScript + Tailwind 3 (`darkMode: 'media'`,
+status color tokens) + React Router. Static-served by nginx in the
+container.
 
-### `plants_db/` retarget
+### Common commands
 
-The pipeline structure (`raw_* → species_curated → mart`) is unchanged, but:
+Run inside the `web` container (or locally with `npm install`):
 
-- The **mart filter** narrows from `popular_species` (200) to the **curated top-50** referenced in the MVP plan. The 50-species list itself is a Phase 0 deliverable and is not yet committed.
-- The **export target** changes from MySQL (`server/initdb/plants_catalog.sql`) to a Postgres seed consumed by Prisma's seeding mechanism (e.g. `apps/api/prisma/seed.ts` or a `.sql` companion). The exact format will be decided once the Prisma schema lands.
-- Group aggregation (`plant_groups` with default care ranges) is still useful as a fallback for "общий профиль" — keep it.
+- `npm run dev` — Vite on `0.0.0.0:5173` with `/api/*` proxied to
+  `VITE_API_BASE` (default `http://localhost:8080`).
+- `npm run build` — type-check + production bundle.
+- `npm run typecheck` — TS without emit.
 
-Until the new backend lands, `plants_db/` should not be re-run for production; the existing `server/initdb/plants_catalog.sql` is for the legacy server only.
+### Pages (Sprint 0)
 
----
+- `/auth` — email → magic-link request.
+- `/auth/consume?token=…` — consumes the token, sets the session cookie,
+  redirects to `/`.
+- `/` — main screen. If no device: prompt to add one (auto-issues a token
+  shown in plain text for the firmware operator). Otherwise: cold-start
+  dashed ring placeholder + four sensor cells (temperature, humidity,
+  lux, soil). Polls `/api/devices/:id/latest` every 10 s.
 
-## Phased plan (high-level — full version in `plant-sensor-mvp-plan(1).md` § 5)
+### Design rules that bind code
 
-0. **Prep** — curate top-50, register Plant.id / domains / VAPID / Resend / Sentry, draw wireframes, **measure quiescent current and Wi-Fi reach**.
-1. **Backend skeleton** — Fastify + Prisma + schema + device endpoints + magic link + Plant.id proxy + battery estimation logic + deploy.
-2. **Firmware** — ESP-IDF, sensors, deep-sleep loop, RTC-RAM buffer, Wi-Fi batch send, captive portal, OTA, `cycles_since_charge`.
-3. **Frontend skeleton + onboarding** — PWA shell, magic link, pairing flow, identification (Plant.id), calibration, place-picking ("walk around 30 s"), traffic-light home, battery icon.
-4. **Notifications and actions** — server-side rule engine, 12 triggers (incl. low battery a week before estimated empty), overwatering guard, Web Push wiring, deep links.
-5. **Plant card and history** — full plant page, 7/30-day charts per parameter, care-event markers, history list, manual back-dated entries, multi-plant switching, post-first-cycle battery-days estimate.
-6. **Polish and real test** — 5 end-to-end runs with real users, rewrite copy out of "ChatGPT voice", edge cases (3-day sensor outage, identification dead-ends, broken sensor, "forgot to press 'I charged it'"), analytics, backups, monitoring.
+These come from `docs/design-summary.html` and constrain implementation,
+not just visuals:
 
-Realistic estimate: ~4 months at 20 h/week. Optimistic: ~10 weeks.
+- Status color travels on rings / borders / icons. **Never on body text** —
+  it breaks in dark mode and reads as alarm.
+- No "I watered / I moved it" buttons. The sensor detects everything; UI
+  only shows what was detected and the instruction.
+- Push texts are actions with numbers ("Полейте 150 мл"), not alerts.
+  Title ≤40 chars, body ≤100. Plant name in title. No exclamations.
+- 48-hour cold start. While in cold start: dashed gray ring, numbers
+  without a verdict, no scolding for "bad" values.
+- Russian only on MVP. No fake-i18n abstraction yet.
 
----
+## firmware/ — ESP32-C3 sensor
 
-## Open questions / deferred decisions
+Stack: ESP-IDF (not Arduino) on ESP32-C3 Super Mini. Inline drivers for
+BME280, BH1750, soil V1.2 (ADC1_CH4), RGB LED.
 
-Tracked in `plant-sensor-mvp-plan(1).md` § 7 and `zelenka-design-summary.html` § "Открытые вопросы". Notable:
+### Common commands
 
-- Exact Plant.id confidence threshold (80 % is a starting hypothesis).
-- Adaptive sampling rate (slower at night) — decided during firmware phase.
-- Whether to switch to a hardware battery gauge (MAX17048 / voltage divider) if software estimation drifts too far in real use.
-- Boost-converter choice pending Phase-0 current measurement.
-- Per-species notification copy (only Ficus is drafted in the design doc).
-- API contracts, push payload schema, device wire format, history retention, offline→online sync — to be designed alongside the backend.
+```bash
+. ~/esp/esp-idf/export.sh
+cd firmware/
+idf.py set-target esp32c3
+idf.py menuconfig    # → "Zelenka" submenu: WIFI_SSID, WIFI_PASSWORD,
+                     #   API_URL, DEVICE_TOKEN, SAMPLE_INTERVAL_SEC
+idf.py build flash monitor
+```
 
----
+`firmware/README.md` has the full pin map and LED legend.
 
-## Secrets (unchanged from legacy)
+### Sprint 0 limits (do not extend without need)
 
-- `server/.env` — DB and API credentials for the **legacy** stack. Gitignored.
-- `ssh.txt` at repo root — prod root SSH credentials. Gitignored, never paste anywhere.
-- `perenual_key*.txt` at repo root — Perenual API keys for `plants_db/import_perenual.py`. Gitignored. Multiple files = multiple keys for free-tier quota rotation on 429.
+- Wi-Fi creds and API URL are static menuconfig values. No captive
+  portal, no provisioning UX.
+- No deep sleep (`vTaskDelay` between samples).
+- No batching, no buffer, no LittleFS fallback.
+- No OTA.
+- Touch button is wired (GPIO10) but unread.
+- Battery not measured. Server-side `battery_estimate` field will exist
+  when needed (firmware just doesn't fill it yet).
 
-For the new stack, secrets will live in `apps/api/.env` (gitignored). Plant.id key, Resend key, VAPID keypair, database URL, Sentry DSN all go there.
+All of the above lands in Sprint 2 per `docs/mvp-plan.md` § 5.
 
----
+## infra/ — the stack
+
+See `infra/README.md` for the run book. Short version:
+
+```bash
+infra/perenual-seed/refresh.sh   # snapshot live Perenual; gitignored output
+cp infra/.env.example infra/.env.dev
+$EDITOR infra/.env.dev           # set passwords, WEB_HOST=:80 for dev
+docker compose -f infra/docker-compose.yml --env-file infra/.env.dev up --build
+```
+
+Then open `http://localhost/`. Magic-link URL prints to API stdout
+(`docker compose logs api`).
+
+### Perenual catalog — read-only contract
+
+The upstream Perenual mirror lives at `~/Desktop/perenual/` (its own
+docker-compose, container `perenual_pg` on port 5433). **Do not write to
+it**, do not modify its data, do not put our containers on its network.
+Refresh our local copy by running the upstream's own fetch and then
+`infra/perenual-seed/refresh.sh` (which only `pg_dump`s the upstream
+container, never connects with anything else).
+
+Inside our compose, `perenual-db` is an independent container seeded from
+that dump. The API connects via a dedicated `perenual_ro` user that has
+SELECT-only privileges on every table.
+
+## Product principles (binding for new code)
+
+These constrain implementation, not just UI. Don't write code that
+violates them without first changing the design doc.
+
+- **Traffic light home screen.** Ring around the plant photo answers
+  "is everything OK?" in one second. Five modes incl. 48 h cold start.
+- **Sensor is the source of truth.** All actions detected from sensor
+  jumps. No manual "I watered" logging.
+- **Push = action with numbers**, not alert text.
+- **Push fires on two kinds of events only** (defined in design doc
+  "Когда вообще приходит пуш") with cooldowns, daily caps, and quiet
+  hours that mute everything by default.
+- **No gamification, no badges, no streaks, no social, no chatty AI tips.**
+- **RU-only on MVP.**
+
+## Tech decisions worth keeping in mind
+
+- Auth: magic link only (no passwords). User-side via HttpOnly session
+  cookie. Device-side via opaque `deviceToken` Bearer.
+- Plant.id: routed via backend, never from the client. 3 identifications
+  / week / user (rolling 7 days), 80% confidence threshold. Sprint 0
+  doesn't surface it yet — the key in `plant_id.txt` lands in env in
+  Sprint 1.
+- Battery indicator (when firmware starts reporting): 4 qualitative
+  states only (full/medium/low/critical), never a percentage. Per-device
+  `cycles_per_full_battery` self-learns after each marked recharge.
+- Image storage / serving: TBD when we get to the plant card. The
+  upstream Perenual mirror has 5.6 GB of images on disk but we don't ship
+  them in containers — links from `raw_json` are an option.
+
+## Secrets
+
+All gitignored — never paste into commits, PR bodies, or external systems:
+
+- `plant_id.txt` — Kindwise Plant.id API key.
+- `plantNet_key.txt` — leftover PlantNet key from the deleted legacy
+  server. Not used by the new code; safe to delete if you want, but the
+  user hasn't said so.
+- `perenual_key*.txt` — Perenual API key(s) used by
+  `~/Desktop/perenual/`. Multiple files supported there for free-tier
+  rotation.
+- `ssh.txt` — prod root SSH credentials.
+- `infra/.env.dev`, `infra/.env.prod` — DB and service passwords.
 
 ## Working with Claude Code on this repo
 
-Per `plant-sensor-mvp-plan(1).md` § 8: always attach the relevant section of the MVP plan and the design doc when prompting on a new screen or endpoint. Without that context, decisions tend to drift back toward generic web-app patterns and away from the deliberate constraints above (no manual care buttons, sensor-driven detection, neutral copy, qualitative battery states, etc.).
+Per `docs/mvp-plan.md` § 8: when starting on a new screen or endpoint,
+paste in the relevant section of the design doc and any related diff.
+Without that, Claude Code tends to drift toward generic web-app patterns
+(manual logging buttons, percentage battery indicators, statuses
+expressed as text colors) — all things this product explicitly rejects.
 
-If you find yourself adding something not in the two source docs — pause and ask whether it belongs in MVP or is a postMVP backlog item.
+Sprint plan: `docs/mvp-plan.md` § 5. Open questions: `docs/mvp-plan.md`
+§ 7 and `docs/design-summary.html` § "Открытые вопросы".
