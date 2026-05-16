@@ -15,21 +15,30 @@ const Sample = z.object({
   soilMoisturePct: z.number().finite().min(0).max(100).nullable().optional(),
 });
 
-// Batch shape — what the firmware POSTs. Single-sample bodies also accepted.
-const Body = z.union([
-  Sample,
-  z.object({ samples: z.array(Sample).min(1).max(64) }),
-]);
+const Batch = z.object({ samples: z.array(Sample).min(1).max(64) });
 
 export async function measurementRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/device/measurements', { preHandler: requireDevice }, async (req, reply) => {
-    const parsed = Body.safeParse(req.body);
-    if (!parsed.success) {
-      reply.code(400);
-      return { error: 'invalid body', issues: parsed.error.issues };
+    // Discriminate on the presence of `samples` rather than a zod union —
+    // a union would happily match `{samples:[...]}` against the single-sample
+    // schema (all fields optional!) and silently drop the array.
+    const body = req.body as Record<string, unknown> | null;
+    let samples: z.infer<typeof Sample>[];
+    if (body && typeof body === 'object' && 'samples' in body) {
+      const parsed = Batch.safeParse(body);
+      if (!parsed.success) {
+        reply.code(400);
+        return { error: 'invalid batch', issues: parsed.error.issues };
+      }
+      samples = parsed.data.samples;
+    } else {
+      const parsed = Sample.safeParse(body);
+      if (!parsed.success) {
+        reply.code(400);
+        return { error: 'invalid sample', issues: parsed.error.issues };
+      }
+      samples = [parsed.data];
     }
-
-    const samples = 'samples' in parsed.data ? parsed.data.samples : [parsed.data];
     const now = new Date();
 
     await prisma.measurement.createMany({
