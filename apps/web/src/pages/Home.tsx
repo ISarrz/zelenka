@@ -134,7 +134,11 @@ export function HomePage() {
         onOpen={() => setPickerOpen(true)}
       />
 
-      <Ring status={ringStatus} />
+      <Ring
+        status={ringStatus}
+        photoUrl={plant?.species?.defaultImageUrl ?? null}
+        fallbackLetter={(plant?.name ?? device.name).trim().charAt(0).toUpperCase()}
+      />
 
       <button
         onClick={() => navigate(`/devices/${device.id}`)}
@@ -224,24 +228,36 @@ function PlantSwitcher({
   );
 }
 
-function Ring({ status }: { status: RingStatus }) {
+function Ring({
+  status, photoUrl, fallbackLetter,
+}: {
+  status: RingStatus;
+  photoUrl: string | null;
+  fallbackLetter: string;
+}) {
   const styles: Record<RingStatus, string> = {
     cold:  'border-status-cold border-dashed',
     ok:    'border-status-ok',
     warn:  'border-status-warn',
     alert: 'border-status-alert',
   };
-  const labels: Record<RingStatus, string> = {
-    cold:  'подождите 48 часов',
-    ok:    'всё хорошо',
-    warn:  'присмотритесь',
-    alert: 'нужно действие',
-  };
   return (
     <div
-      className={`relative w-44 h-44 rounded-full border-[10px] flex items-center justify-center ${styles[status]}`}
+      className={`relative w-48 h-48 rounded-full border-[10px] flex items-center justify-center overflow-hidden ${styles[status]}`}
+      aria-label={`Состояние: ${status}`}
     >
-      <span className="text-sm text-neutral-500">{labels[status]}</span>
+      {photoUrl ? (
+        <img
+          src={photoUrl}
+          alt=""
+          className="w-full h-full object-cover"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+      ) : (
+        <div className="w-full h-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+          <span className="text-5xl font-light text-neutral-400">{fallbackLetter}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -288,6 +304,16 @@ function Cell({
   );
 }
 
+function statusDotClass(s: RingStatus | string | null | undefined): string {
+  switch (s) {
+    case 'ok':    return 'bg-status-ok';
+    case 'warn':  return 'bg-status-warn';
+    case 'alert': return 'bg-status-alert';
+    case 'cold':
+    default:      return 'bg-status-cold';
+  }
+}
+
 function PlantPicker({
   devices, activeId, onPick, onClose, onAdded,
 }: {
@@ -316,13 +342,25 @@ function PlantPicker({
               ?? d.plant?.species?.commonNameEn
               ?? d.plant?.species?.scientificName
               ?? (d.plant ? 'общий профиль' : 'нет растения');
+            const photo = d.plant?.species?.defaultImageUrl;
+            const dot = statusDotClass(d.plant?.lastRingStatus);
             return (
               <li key={d.id}>
                 <button
                   onClick={() => onPick(d.id)}
-                  className={`w-full flex items-center justify-between rounded-xl px-3 py-2 text-left ${isActive ? 'bg-neutral-100 dark:bg-neutral-800' : ''}`}
+                  className={`w-full flex items-center gap-3 rounded-xl px-2 py-2 text-left ${isActive ? 'bg-neutral-100 dark:bg-neutral-800' : ''}`}
                 >
-                  <span>
+                  <span className="relative shrink-0">
+                    {photo ? (
+                      <img src={photo} alt="" className="w-10 h-10 rounded-full object-cover" />
+                    ) : (
+                      <span className="w-10 h-10 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400">
+                        {name.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ring-2 ring-white dark:ring-neutral-900 ${dot}`} />
+                  </span>
+                  <span className="flex-1">
                     <div className="font-medium">{name}</div>
                     <div className="text-xs text-neutral-500 italic">{sub}</div>
                   </span>

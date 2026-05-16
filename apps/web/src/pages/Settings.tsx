@@ -1,11 +1,22 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, type SettingsUser } from '../api';
+import { api, type Device, type SettingsUser } from '../api';
 import { unsubscribeFromPush } from '../lib/push';
+
+function statusDotClass(s: string | null | undefined): string {
+  switch (s) {
+    case 'ok':    return 'bg-status-ok';
+    case 'warn':  return 'bg-status-warn';
+    case 'alert': return 'bg-status-alert';
+    case 'cold':
+    default:      return 'bg-status-cold';
+  }
+}
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const [user, setUser] = useState<SettingsUser | null>(null);
+  const [devices, setDevices] = useState<Device[]>([]);
   const [saving, setSaving] = useState(false);
   const [pushOn, setPushOn] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +28,7 @@ export function SettingsPage() {
         if ((err as { status?: number }).status === 401) navigate('/auth', { replace: true });
         else setError((err as Error).message);
       });
+    api.listDevices().then((r) => setDevices(r.devices)).catch(() => undefined);
     if ('serviceWorker' in navigator && 'PushManager' in window) {
       navigator.serviceWorker.getRegistration()
         .then((reg) => reg?.pushManager.getSubscription())
@@ -109,6 +121,36 @@ export function SettingsPage() {
           >Отписаться от push-уведомлений</button>
         ) : (
           <p className="text-sm text-neutral-500">Push сейчас выключен. Включить можно с главного экрана.</p>
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Привязанные датчики</h2>
+        {devices.length === 0 ? (
+          <p className="text-sm text-neutral-500">Датчиков ещё нет.</p>
+        ) : (
+          <ul className="divide-y divide-neutral-200 dark:divide-neutral-800 rounded-2xl border border-neutral-200 dark:border-neutral-800">
+            {devices.map((d) => {
+              const name = d.plant?.name ?? d.name;
+              const sub = d.plant?.species?.commonNameRu
+                ?? d.plant?.species?.commonNameEn
+                ?? d.plant?.species?.scientificName
+                ?? (d.plant ? 'общий профиль' : 'нет растения');
+              return (
+                <li key={d.id} className="px-3 py-2 flex items-center gap-3">
+                  <span className={`w-2.5 h-2.5 rounded-full ${statusDotClass(d.plant?.lastRingStatus)}`} />
+                  <button
+                    onClick={() => navigate(`/devices/${d.id}`)}
+                    className="flex-1 text-left"
+                  >
+                    <div className="text-sm font-medium">{name}</div>
+                    <div className="text-xs text-neutral-500 italic">{sub}</div>
+                  </button>
+                  <span className="text-neutral-400" aria-hidden>›</span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </section>
 

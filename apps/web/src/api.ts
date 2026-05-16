@@ -46,6 +46,7 @@ export interface Plant {
   speciesId: string | null;
   species: PlantSpecies | null;
   identifiedAt: string | null;
+  lastRingStatus: string | null;
 }
 
 export interface Device {
