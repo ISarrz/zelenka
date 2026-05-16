@@ -1,37 +1,25 @@
 menu "Zelenka"
 
-    config ZELENKA_WIFI_SSID
-        string "Wi-Fi SSID"
-        default "myssid"
-        help
-            SSID of the Wi-Fi network the sensor joins as a station. Sprint 0:
-            hardcoded. Sprint 2 swaps this for a captive-portal provisioning flow.
-
-    config ZELENKA_WIFI_PASSWORD
-        string "Wi-Fi password"
-        default ""
-        help
-            WPA/WPA2/WPA3-PSK password. Empty for open networks.
-
     config ZELENKA_API_URL
-        string "Measurements POST URL"
-        default "http://192.168.1.100/api/device/measurements"
+        string "Default API URL"
+        default "https://zelenka-api.ru/api/device/measurements"
         help
-            Full URL of the API endpoint that accepts measurement batches. In
-            dev set to your laptop's LAN IP (Caddy is on :80 by default).
-
-    config ZELENKA_DEVICE_TOKEN
-        string "Device token (Bearer)"
-        default ""
-        help
-            Opaque token issued by the server when this device was paired.
-            Created in the PWA via the "Добавить растение" flow.
+            Server endpoint that accepts measurement batches. NVS overrides
+            this if the captive portal saved a custom URL — otherwise this
+            compile-time default wins.
 
     config ZELENKA_SAMPLE_INTERVAL_SEC
         int "Seconds between samples"
-        default 30
+        default 600
         range 5 3600
         help
-            Sprint 0 demo: 30s. Production target is 10 minutes (600).
+            Production target: 600 (10 min). Drop to 30 for development.
+
+    config ZELENKA_BATCH_SIZE
+        int "Samples per batch POST"
+        default 6
+        range 1 64
+        help
+            At 10-min sampling with batch=6, the radio comes up once per hour.
 
 endmenu

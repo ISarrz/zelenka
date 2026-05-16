@@ -1,6 +1,15 @@
 # Defaults — `idf.py menuconfig` overrides these per developer.
 CONFIG_IDF_TARGET="esp32c3"
 
+# 4 MB flash on the Super Mini we ship.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# Custom partition table — 2 MB factory app (HTTPS + crt bundle pushes us
+# past the stock 1 MB).
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
 # We have one task per phase, no SMP; keep main task stack roomy enough for HTTP.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
@@ -11,6 +20,12 @@ CONFIG_ESP_WIFI_ENABLE_WPA3_SAE=y
 # switch to TLS once the server is behind Caddy.
 CONFIG_ESP_TLS_USING_MBEDTLS=y
 CONFIG_MBEDTLS_TLS_CLIENT=y
+
+# Real browsers easily send 1 KB+ of request headers (Cookie + User-Agent +
+# Accept-Language). The default 512 makes the captive-portal page reject
+# every submit with "header fields are too long".
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
+CONFIG_HTTPD_MAX_URI_LEN=1024
 
 # Use the system event loop default sizes — adequate for a single Wi-Fi
 # connection.

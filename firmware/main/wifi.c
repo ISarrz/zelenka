@@ -8,7 +8,6 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
-#include "sdkconfig.h"
 
 static const char *TAG = "wifi";
 
@@ -19,8 +18,7 @@ static EventGroupHandle_t s_events;
 static int s_retries = 0;
 
 static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
-    (void)arg;
-    (void)data;
+    (void)arg; (void)data;
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
@@ -36,24 +34,30 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
     }
 }
 
-esp_err_t wifi_connect_blocking(void) {
+esp_err_t wifi_connect_blocking(const char *ssid, const char *password) {
     s_events = xEventGroupCreate();
 
-    ESP_ERROR_CHECK(esp_netif_init());
-    esp_netif_create_default_wifi_sta();
+    static bool netif_inited = false;
+    if (!netif_inited) {
+        ESP_ERROR_CHECK(esp_netif_init());
+        esp_netif_create_default_wifi_sta();
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+        netif_inited = true;
+    }
 
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-    esp_event_handler_instance_t any_id, got_ip;
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
-                                                        &on_event, NULL, &any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
-                                                        &on_event, NULL, &got_ip));
+    static bool handlers_registered = false;
+    if (!handlers_registered) {
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(
+            WIFI_EVENT, ESP_EVENT_ANY_ID, &on_event, NULL, NULL));
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(
+            IP_EVENT, IP_EVENT_STA_GOT_IP, &on_event, NULL, NULL));
+        handlers_registered = true;
+    }
 
     wifi_config_t wc = {0};
-    strncpy((char *)wc.sta.ssid, CONFIG_ZELENKA_WIFI_SSID, sizeof(wc.sta.ssid));
-    strncpy((char *)wc.sta.password, CONFIG_ZELENKA_WIFI_PASSWORD, sizeof(wc.sta.password));
+    strncpy((char *)wc.sta.ssid, ssid, sizeof(wc.sta.ssid) - 1);
+    if (password) strncpy((char *)wc.sta.password, password, sizeof(wc.sta.password) - 1);
     wc.sta.threshold.authmode = WIFI_AUTH_OPEN;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
@@ -64,7 +68,7 @@ esp_err_t wifi_connect_blocking(void) {
         s_events, BIT_CONNECTED | BIT_FAILED, pdFALSE, pdFALSE, pdMS_TO_TICKS(30000));
 
     if (bits & BIT_CONNECTED) {
-        ESP_LOGI(TAG, "connected to %s", CONFIG_ZELENKA_WIFI_SSID);
+        ESP_LOGI(TAG, "connected to %s", ssid);
         return ESP_OK;
     }
     ESP_LOGE(TAG, "wifi connect failed");

@@ -5,13 +5,20 @@ idf_component_register(
         "sensors.c"
         "http_post.c"
         "led.c"
+        "nvs_cfg.c"
+        "provisioning.c"
+        "touch.c"
     INCLUDE_DIRS "."
     REQUIRES
         nvs_flash
         esp_wifi
         esp_event
         esp_http_client
+        esp_http_server
+        esp_netif
+        esp_timer
         esp_adc
+        lwip
         driver
         json
         esp-tls
