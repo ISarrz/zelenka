@@ -96,6 +96,11 @@ export function DeviceSetupPage() {
           <p className="text-sm text-neutral-500 leading-relaxed">
             Включите датчик и поднесите телефон ближе. Через 30 секунд он откроет свою Wi-Fi сеть.
           </p>
+
+          <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+            <strong>Выключите VPN</strong> на телефоне на время подключения. VPN перехватывает локальный трафик и форма на 192.168.4.1 не откроется.
+          </div>
+
           <ol className="space-y-3 text-sm">
             <li className="flex gap-3">
               <span className="flex-shrink-0 w-5 h-5 rounded-full border border-neutral-300 dark:border-neutral-700 flex items-center justify-center text-[11px]">1</span>
