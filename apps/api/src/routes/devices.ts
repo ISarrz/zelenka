@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUser } from '../lib/auth.js';
 import { newToken } from '../lib/sessions.js';
+import { buildBatteryStatus } from '../lib/battery.js';
 import { GENERIC_THRESHOLDS, type CareThresholds } from '../lib/thresholds.js';
 import { evaluate } from '../lib/verdict.js';
 
@@ -168,6 +169,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       measurement: latest,
       verdict,
       thresholds,
+      battery: latest ? buildBatteryStatus(latest.batteryRaw) : null,
     };
   });
 }
