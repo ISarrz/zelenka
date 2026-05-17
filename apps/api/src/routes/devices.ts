@@ -233,7 +233,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       verdict,
       thresholds,
       battery: latest
-        ? buildBatteryStatus(latest.batteryRaw, {
+        ? buildBatteryStatus(latest.batteryRaw, latest.batteryMv, {
             cyclesSinceLastCharge: device.cyclesSinceLastCharge,
             cyclesPerFullBattery: device.cyclesPerFullBattery,
             lastChargeAt: device.lastChargeAt,

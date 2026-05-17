@@ -209,12 +209,12 @@ model Measurement {
   soilMoistureRaw Int?
   soilMoisturePct Float?
 
-  // Battery divider raw read from ADC1_CH3 (GPIO3 on the C3 Super Mini).
-  // 1:1 resistor divider (100k:100k) on BAT+ of TP4056 → linear in V_bat
-  // over the Li-Ion working range 3.0–4.2 V. Raw → voltage conversion lives
-  // in src/lib/battery.ts; storage stays raw to keep DB writes cheap and
-  // resolution untouched.
+  // Battery divider on ADC1_CH3 (GPIO3). 100k:100k divider on BAT+ of the
+  // TP4056. batteryRaw is the 0..4095 ADC sample; batteryMv is the per-chip
+  // curve-fitted millivolts at the pin (eFuse cal), null on older firmware
+  // that doesn't ship calibration. Lib code prefers mv when available.
   batteryRaw      Int?
+  batteryMv       Int?
 
   @@index([deviceId, measuredAt])
 }

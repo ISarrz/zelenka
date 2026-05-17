@@ -5,7 +5,7 @@
 // does, so cooldown / daily-cap checks remain consistent across both paths.
 
 import { prisma } from '../db.js';
-import { rawToVoltage, voltageToEstimate } from './battery.js';
+import { batteryVoltage, voltageToEstimate } from './battery.js';
 import { sendPushToUser } from './push.js';
 import type { CareThresholds } from './thresholds.js';
 import { GENERIC_THRESHOLDS } from './thresholds.js';
@@ -241,11 +241,11 @@ async function scanBatteryLow(plants: PlantSnap[]): Promise<void> {
     if (await recentlySent(p.id, 'battery_low_week', COOLDOWN_7D)) continue;
 
     const latest = await prisma.measurement.findFirst({
-      where: { deviceId: p.deviceId, batteryRaw: { not: null } },
+      where: { deviceId: p.deviceId, OR: [{ batteryRaw: { not: null } }, { batteryMv: { not: null } }] },
       orderBy: { measuredAt: 'desc' },
-      select: { batteryRaw: true },
+      select: { batteryRaw: true, batteryMv: true },
     });
-    const voltage = rawToVoltage(latest?.batteryRaw);
+    const voltage = batteryVoltage(latest?.batteryRaw, latest?.batteryMv);
     const estimate = voltageToEstimate(voltage);
     if (estimate !== 'low' && estimate !== 'critical') continue;
 

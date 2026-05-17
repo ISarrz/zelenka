@@ -14,6 +14,8 @@
 #include <string.h>
 
 #include "driver/i2c.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -193,6 +195,7 @@ static esp_err_t bh1750_read(float *lux) {
 #define BATTERY_ADC_CHANNEL  ADC_CHANNEL_3   // GPIO3, 1:1 divider on BAT+
 
 static adc_oneshot_unit_handle_t s_adc;
+static adc_cali_handle_t          s_cali_battery = NULL;
 static bool s_soil_ok = false;
 static bool s_battery_ok = false;
 
@@ -211,6 +214,23 @@ static esp_err_t adc_init(void) {
     // must NOT be configured for ADC — doing so saturates the adjacent CH3
     // sample-hold. Same precaution would apply if anyone later considers
     // GPIO8/9 (those are I2C in our design).
+
+    // Per-chip curve-fitting calibration for the battery channel. eFuse data
+    // burned at the factory + a small polynomial bring the raw→mV error from
+    // roughly ±50 mV (linear approximation) down to ±10 mV. Soil only needs
+    // band classification so we skip cal there.
+    if (s_battery_ok) {
+        adc_cali_curve_fitting_config_t cali_cfg = {
+            .unit_id  = ADC_UNIT,
+            .chan     = BATTERY_ADC_CHANNEL,
+            .atten    = ADC_ATTEN_DB_12,
+            .bitwidth = ADC_BITWIDTH_DEFAULT,
+        };
+        if (adc_cali_create_scheme_curve_fitting(&cali_cfg, &s_cali_battery) != ESP_OK) {
+            ESP_LOGW(TAG, "battery ADC calibration unavailable; falling back to raw-only");
+            s_cali_battery = NULL;
+        }
+    }
     return (s_soil_ok || s_battery_ok) ? ESP_OK : ESP_FAIL;
 }
 
@@ -218,6 +238,13 @@ static int adc_read_raw(adc_channel_t ch) {
     int raw = 0;
     if (adc_oneshot_read(s_adc, ch, &raw) != ESP_OK) return -1;
     return raw;
+}
+
+static int adc_raw_to_mv(adc_cali_handle_t cali, int raw) {
+    if (!cali || raw < 0) return -1;
+    int mv = 0;
+    if (adc_cali_raw_to_voltage(cali, raw, &mv) != ESP_OK) return -1;
+    return mv;
 }
 
 // ---- Public API -----------------------------------------------------------
@@ -288,7 +315,10 @@ void sensors_read(sensor_reading_t *out) {
         int raw = adc_read_raw(BATTERY_ADC_CHANNEL);
         if (raw >= 0) {
             out->battery_raw = raw;
+            out->battery_mv  = adc_raw_to_mv(s_cali_battery, raw);
             out->has_battery = true;
+        } else {
+            out->battery_mv = -1;
         }
     }
 }

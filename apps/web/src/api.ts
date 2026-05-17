@@ -71,6 +71,7 @@ export interface Measurement {
   soilMoistureRaw: number | null;
   soilMoisturePct: number | null;
   batteryRaw: number | null;
+  batteryMv: number | null;
 }
 
 export interface FeedItem {
@@ -88,13 +89,15 @@ export interface FeedItem {
 export type BatteryEstimate = 'full' | 'mid' | 'low' | 'critical';
 
 export interface BatteryStatus {
-  raw: number;
+  raw: number | null;
+  mv: number | null;
   voltage: number;
   estimate: BatteryEstimate;
   cyclesSinceLastCharge: number;
   cyclesPerFullBattery: number | null;
   daysUntilCritical: number | null;
   lastChargeAt: string | null;
+  calibrated: boolean;
 }
 
 export type Severity = 'ok' | 'warn' | 'alert' | 'unknown';

@@ -1,10 +1,11 @@
-// Battery raw ADC → voltage → 4-state qualitative estimate.
+// Battery raw ADC / calibrated mV → voltage → 4-state qualitative estimate.
 //
 // Hardware: 100 kΩ : 100 kΩ resistor divider on BAT+ of TP4056, signal fed
-// to ADC1_CH3 (GPIO3) on the ESP32-C3 Super Mini. The C3 ADC at 12 dB
-// attenuation is roughly linear over 0..3.1 V → raw 0..4095 without
-// per-chip calibration; the small slope error doesn't affect the 4-band
-// classification that the UI ultimately renders.
+// to ADC1_CH3 (GPIO3) on the ESP32-C3 Super Mini. Firmware ≥ 0.1.9 ships
+// per-chip curve-fitting calibration (eFuse) and sends `batteryMv` in the
+// payload; we prefer that when available. Older firmware (0.1.4–0.1.8)
+// sends only `batteryRaw`, and we fall back to a linear 0..3.1 V / 0..4095
+// approximation that lands within ±50 mV.
 //
 // Design constraint (per docs/design-summary.html): battery is shown as
 // one of full / mid / low / critical, never as a percentage.
@@ -18,6 +19,23 @@ export function rawToVoltage(raw: number | null | undefined): number | null {
   if (!Number.isFinite(raw) || raw < 0 || raw > ADC_FULLSCALE_RAW) return null;
   const pinV = (raw * ADC_FULLSCALE_V) / ADC_FULLSCALE_RAW;
   return Number((pinV * DIVIDER_RATIO).toFixed(3));
+}
+
+export function mvToVoltage(mv: number | null | undefined): number | null {
+  if (mv == null) return null;
+  if (!Number.isFinite(mv) || mv < 0) return null;
+  return Number(((mv / 1000) * DIVIDER_RATIO).toFixed(3));
+}
+
+// Prefer calibrated mV when present (firmware ≥ 0.1.9); fall back to the
+// linear raw approximation otherwise. Returns V_bat in volts.
+export function batteryVoltage(
+  raw: number | null | undefined,
+  mv: number | null | undefined,
+): number | null {
+  const fromMv = mvToVoltage(mv);
+  if (fromMv != null) return fromMv;
+  return rawToVoltage(raw);
 }
 
 export type BatteryEstimate = 'full' | 'mid' | 'low' | 'critical';
@@ -43,7 +61,8 @@ export function detectChargeEvent(prevV: number | null, currV: number | null): b
 }
 
 export interface BatteryStatus {
-  raw: number;
+  raw: number | null;
+  mv: number | null;
   voltage: number;
   estimate: BatteryEstimate;
   cyclesSinceLastCharge: number;
@@ -53,6 +72,10 @@ export interface BatteryStatus {
   // observed a full charge-discharge cycle.
   daysUntilCritical: number | null;
   lastChargeAt: string | null;
+  // True when the voltage was derived from per-chip eFuse calibration
+  // rather than the linear raw approximation. UI can use this to nudge a
+  // ±50 mV vs ±10 mV tooltip if it ever cares.
+  calibrated: boolean;
 }
 
 // Default sampling cadence in seconds — must match CONFIG_ZELENKA_SAMPLE_INTERVAL_SEC.
@@ -62,14 +85,15 @@ const SAMPLE_INTERVAL_SEC = 600;
 
 export function buildBatteryStatus(
   raw: number | null | undefined,
+  mv: number | null | undefined,
   device: {
     cyclesSinceLastCharge: number;
     cyclesPerFullBattery: number | null;
     lastChargeAt: Date | null;
   },
 ): BatteryStatus | null {
-  if (raw == null) return null;
-  const voltage = rawToVoltage(raw);
+  if (raw == null && mv == null) return null;
+  const voltage = batteryVoltage(raw, mv);
   if (voltage == null) return null;
   const estimate = voltageToEstimate(voltage);
   if (estimate == null) return null;
@@ -81,13 +105,15 @@ export function buildBatteryStatus(
   }
 
   return {
-    raw,
+    raw: raw ?? null,
+    mv: mv ?? null,
     voltage,
     estimate,
     cyclesSinceLastCharge: device.cyclesSinceLastCharge,
     cyclesPerFullBattery: device.cyclesPerFullBattery,
     daysUntilCritical,
     lastChargeAt: device.lastChargeAt?.toISOString() ?? null,
+    calibrated: mv != null,
   };
 }
 
@@ -100,10 +126,12 @@ export async function updateBatteryCounters(args: {
   deviceId: string;
   device: { cyclesSinceLastCharge: number; cyclesPerFullBattery: number | null };
   priorVoltage: number | null;
-  freshBatteryRaws: ReadonlyArray<number | null | undefined>;
+  // Each entry carries the raw + optional mv from a single fresh sample;
+  // mv wins when present (calibrated firmware), raw is the fallback.
+  freshBatterySamples: ReadonlyArray<{ raw: number | null | undefined; mv: number | null | undefined }>;
 }): Promise<{ chargeDetected: boolean; newCounter: number; newPerFull: number | null }> {
-  const samples = args.freshBatteryRaws
-    .map((r) => rawToVoltage(r))
+  const samples = args.freshBatterySamples
+    .map((s) => batteryVoltage(s.raw, s.mv))
     .filter((v): v is number => v != null);
   if (samples.length === 0) {
     return {

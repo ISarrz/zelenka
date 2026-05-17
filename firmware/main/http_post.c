@@ -44,6 +44,10 @@ static int format_sample_json(char *buf, size_t cap, const sensor_reading_t *r, 
     if (r->has_battery) {
         off += snprintf(buf + off, cap - off, "%s\"batteryRaw\":%d",
                         first ? "" : ",", r->battery_raw);
+        first = false;
+        if (r->battery_mv >= 0) {
+            off += snprintf(buf + off, cap - off, ",\"batteryMv\":%d", r->battery_mv);
+        }
     }
     off += snprintf(buf + off, cap - off, "}");
     return (int)off;

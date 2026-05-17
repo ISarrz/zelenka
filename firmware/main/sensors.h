@@ -14,6 +14,7 @@ typedef struct {
     float  lux;               // BH1750
     int    soil_moisture_raw; // ADC1_CH1 (GPIO1), raw 0..4095
     int    battery_raw;       // ADC1_CH3 (GPIO3), raw 0..4095; 1:1 divider on BAT+
+    int    battery_mv;        // calibrated pin voltage in mV (eFuse curve fit). -1 if cal unavailable.
 } sensor_reading_t;
 
 void sensors_init(void);

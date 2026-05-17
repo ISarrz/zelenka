@@ -79,8 +79,8 @@ static void sample_averaged(sensor_reading_t *out) {
     *out = (sensor_reading_t){0};
     float t_sum = 0, h_sum = 0, p_sum = 0, lux_sum = 0;
     int   t_n = 0, h_n = 0, p_n = 0, lux_n = 0;
-    long  soil_sum = 0, battery_sum = 0;
-    int   soil_n = 0, battery_n = 0;
+    long  soil_sum = 0, battery_sum = 0, battery_mv_sum = 0;
+    int   soil_n = 0, battery_n = 0, battery_mv_n = 0;
 
     for (int i = 0; i < SAMPLE_AVG_N; i++) {
         sensor_reading_t r;
@@ -98,6 +98,7 @@ static void sample_averaged(sensor_reading_t *out) {
         }
         if (r.has_battery) {
             battery_sum += r.battery_raw; battery_n++;
+            if (r.battery_mv >= 0) { battery_mv_sum += r.battery_mv; battery_mv_n++; }
         }
         if (i < SAMPLE_AVG_N - 1) vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -110,6 +111,7 @@ static void sample_averaged(sensor_reading_t *out) {
     if (soil_n > 0){ out->soil_moisture_raw = (int)(soil_sum / soil_n);
                      out->has_soil = true; }
     if (battery_n > 0) { out->battery_raw = (int)(battery_sum / battery_n);
+                         out->battery_mv  = battery_mv_n > 0 ? (int)(battery_mv_sum / battery_mv_n) : -1;
                          out->has_battery = true; }
 }
 

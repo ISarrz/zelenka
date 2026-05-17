@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireDevice } from '../lib/auth.js';
-import { rawToVoltage, updateBatteryCounters } from '../lib/battery.js';
+import { batteryVoltage, updateBatteryCounters } from '../lib/battery.js';
 import { detectAutoEvents } from '../lib/care_events.js';
 import { evaluatePushTriggers } from '../lib/rules.js';
 import type { CareThresholds } from '../lib/thresholds.js';
@@ -20,6 +20,7 @@ const Sample = z.object({
   soilMoistureRaw: z.number().int().nullable().optional(),
   soilMoisturePct: z.number().finite().min(0).max(100).nullable().optional(),
   batteryRaw: z.number().int().min(0).max(4095).nullable().optional(),
+  batteryMv: z.number().int().min(0).max(4000).nullable().optional(),
 });
 
 const DeviceMeta = z.object({
@@ -61,15 +62,15 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
     // Compute battery counter delta BEFORE inserting — we need to know the
     // prior-recorded voltage, which would otherwise include the new samples
     // we're about to write.
-    const samplesWithBattery = samples.filter((s) => s.batteryRaw != null);
+    const samplesWithBattery = samples.filter((s) => s.batteryRaw != null || s.batteryMv != null);
     let priorBatteryVoltage: number | null = null;
     if (samplesWithBattery.length > 0) {
       const lastBattery = await prisma.measurement.findFirst({
-        where: { deviceId: req.deviceId!, batteryRaw: { not: null } },
+        where: { deviceId: req.deviceId!, OR: [{ batteryRaw: { not: null } }, { batteryMv: { not: null } }] },
         orderBy: { measuredAt: 'desc' },
-        select: { batteryRaw: true },
+        select: { batteryRaw: true, batteryMv: true },
       });
-      priorBatteryVoltage = rawToVoltage(lastBattery?.batteryRaw);
+      priorBatteryVoltage = batteryVoltage(lastBattery?.batteryRaw, lastBattery?.batteryMv);
     }
 
     await prisma.measurement.createMany({
@@ -83,6 +84,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
         soilMoistureRaw: s.soilMoistureRaw ?? null,
         soilMoisturePct: s.soilMoisturePct ?? null,
         batteryRaw: s.batteryRaw ?? null,
+        batteryMv: s.batteryMv ?? null,
       })),
     });
 
@@ -102,7 +104,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
           deviceId: req.deviceId!,
           device: dev,
           priorVoltage: priorBatteryVoltage,
-          freshBatteryRaws: samplesWithBattery.map((s) => s.batteryRaw),
+          freshBatterySamples: samplesWithBattery.map((s) => ({ raw: s.batteryRaw, mv: s.batteryMv })),
         });
         deviceUpdate.cyclesSinceLastCharge = upd.newCounter;
         deviceUpdate.cyclesPerFullBattery = upd.newPerFull;
