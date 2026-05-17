@@ -83,6 +83,13 @@ model Device {
   wifiRssi              Int?
   lastSeenAt            DateTime?
 
+  // Set when the user taps "Сбросить датчик" in DeviceManage. The flag is
+  // picked up by firmware on its next batch POST: the response body carries
+  // `pendingFactoryReset: true`, firmware wipes NVS and reboots into the
+  // SoftAP captive portal. Flag is cleared atomically when included in a
+  // response so a retry doesn't double-fire.
+  pendingFactoryReset   Boolean   @default(false)
+
   measurements Measurement[]
   plant        Plant?
 

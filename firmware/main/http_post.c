@@ -11,6 +11,24 @@
 static const char *TAG = "http";
 
 #define BODY_MAX 2048
+#define RESP_MAX 256
+
+// Captures up to RESP_MAX-1 bytes of the response body into user_data, which
+// the caller pre-zeros. Used to look for `pendingFactoryReset:true` in the
+// JSON reply without bringing in a full parser.
+static esp_err_t capture_response(esp_http_client_event_t *evt) {
+    if (evt->event_id == HTTP_EVENT_ON_DATA && evt->user_data) {
+        char *buf = (char *)evt->user_data;
+        size_t cur = strlen(buf);
+        size_t room = (cur >= RESP_MAX - 1) ? 0 : (RESP_MAX - 1 - cur);
+        size_t copy = (size_t)evt->data_len < room ? (size_t)evt->data_len : room;
+        if (copy > 0) {
+            memcpy(buf + cur, evt->data, copy);
+            buf[cur + copy] = 0;
+        }
+    }
+    return ESP_OK;
+}
 
 static int format_sample_json(char *buf, size_t cap, const sensor_reading_t *r, int64_t epoch_s) {
     size_t off = 0;
@@ -59,12 +77,15 @@ esp_err_t http_post_batch(
     const sensor_reading_t *samples,
     const int64_t *epoch_seconds,
     size_t n,
-    const http_post_meta_t *meta
+    const http_post_meta_t *meta,
+    bool *out_factory_reset
 ) {
     if (n == 0 || !device_token || !device_token[0]) return ESP_ERR_INVALID_ARG;
+    if (out_factory_reset) *out_factory_reset = false;
 
     char *body = malloc(BODY_MAX);
     if (!body) return ESP_ERR_NO_MEM;
+    char resp_buf[RESP_MAX] = {0};
 
     size_t off = 0;
     off += snprintf(body + off, BODY_MAX - off, "{\"samples\":[");
@@ -99,6 +120,8 @@ esp_err_t http_post_batch(
         .method = HTTP_METHOD_POST,
         .timeout_ms = 8000,
         .crt_bundle_attach = esp_crt_bundle_attach,
+        .event_handler = capture_response,
+        .user_data = resp_buf,
     };
     esp_http_client_handle_t cli = esp_http_client_init(&cfg);
     esp_http_client_set_header(cli, "Content-Type", "application/json");
@@ -109,6 +132,13 @@ esp_err_t http_post_batch(
     int status = esp_http_client_get_status_code(cli);
     if (err == ESP_OK && status >= 200 && status < 300) {
         ESP_LOGI(TAG, "posted batch (%zu samples, %d)", n, status);
+        // Substring match avoids pulling cJSON in for one flag. Server emits
+        // the JSON exactly as "pendingFactoryReset":true with no whitespace
+        // (fast-json-stringify default in fastify) — if that ever changes we'd
+        // need a real parser.
+        if (out_factory_reset && strstr(resp_buf, "\"pendingFactoryReset\":true")) {
+            *out_factory_reset = true;
+        }
     } else {
         ESP_LOGE(TAG, "post failed: err=%s status=%d body=%.*s",
                  esp_err_to_name(err), status, (int)off, body);

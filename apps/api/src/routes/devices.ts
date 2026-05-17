@@ -54,6 +54,20 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
     return null;
   });
 
+  // Software-trigger factory reset. The flag is delivered to the device on
+  // its next measurement POST (which is also where it's cleared atomically),
+  // so the user can reset a sealed sensor without physical access.
+  app.post('/api/devices/:id/factory-reset', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const device = await prisma.device.findFirst({ where: { id, userId: req.userId } });
+    if (!device) { reply.code(404); return { error: 'not found' }; }
+    await prisma.device.update({
+      where: { id },
+      data: { pendingFactoryReset: true },
+    });
+    return { status: 'queued' };
+  });
+
   // Replace a device with a fresh one, carrying history + plant binding over
   // to the new device-id. Used when the physical sensor breaks. All-or-nothing
   // transaction: measurements + plant are reassigned to the new id before the

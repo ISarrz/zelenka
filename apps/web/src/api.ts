@@ -158,6 +158,8 @@ export const api = {
     request<null>(`/devices/${deviceId}`, { method: 'DELETE' }),
   replaceDevice: (deviceId: string) =>
     request<{ device: Device }>(`/devices/${deviceId}/replace`, { method: 'POST' }),
+  factoryResetDevice: (deviceId: string) =>
+    request<{ status: string }>(`/devices/${deviceId}/factory-reset`, { method: 'POST' }),
   firmwareManifest: () =>
     request<{ version: string; url: string; sha256: string; size: number; notes: string | null }>(
       '/firmware/manifest.json',

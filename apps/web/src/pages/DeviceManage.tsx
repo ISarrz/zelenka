@@ -62,6 +62,8 @@ export function DeviceManagePage() {
   const [replaceOpen, setReplaceOpen] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const [repairOpen, setRepairOpen] = useState(false);
+  const [repairQueueing, setRepairQueueing] = useState(false);
+  const [repairQueued, setRepairQueued] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -141,6 +143,27 @@ export function DeviceManagePage() {
       setReplaceOpen(false);
       setError('Не удалось заменить датчик');
     }
+  };
+
+  const handleQueueRepair = async () => {
+    if (!id) return;
+    setRepairQueueing(true);
+    try {
+      await api.factoryResetDevice(id);
+      setRepairQueued(true);
+    } catch {
+      setError('Не удалось поставить сброс в очередь');
+      setRepairOpen(false);
+    } finally {
+      setRepairQueueing(false);
+    }
+  };
+
+  const closeRepair = () => {
+    setRepairOpen(false);
+    // Reset queued state after the user closes — otherwise re-opening shows
+    // a stale "Запрос отправлен" before they've done anything.
+    setTimeout(() => setRepairQueued(false), 200);
   };
 
   return (
@@ -293,22 +316,33 @@ export function DeviceManagePage() {
         open={repairOpen}
         tone="neutral"
         iconSlot={<span className="text-2xl">↻</span>}
-        title="Переподключить к Wi-Fi"
-        body={
-          <div className="text-left">
-            <ol className="list-decimal pl-5 space-y-1.5 text-[13px]">
-              <li>Отключите датчик от питания.</li>
-              <li>Зажмите сенсорную кнопку.</li>
-              <li>Удерживая её, подключите питание.</li>
-              <li>Продолжайте удерживать ≥ 3 секунды до мигания светодиода.</li>
-              <li>В телефоне выберите Wi-Fi «Zelenka-{idLabel}» и пройдите шаги настройки заново.</li>
-            </ol>
+        title={repairQueued ? 'Запрос отправлен' : 'Переподключить к Wi-Fi'}
+        body={repairQueued ? (
+          <div className="text-left text-[13px] leading-relaxed">
+            Датчик перейдёт в режим настройки на следующем цикле передачи данных — обычно в течение часа.
+            В Wi-Fi появится сеть «Zelenka-{idLabel}», подключитесь к ней и пройдите шаги заново.
           </div>
-        }
-        primaryLabel="Понятно"
+        ) : (
+          <div className="text-left text-[13px] leading-relaxed space-y-3">
+            <p>
+              Самый простой путь — отправить датчику команду по сети. На следующем цикле передачи (обычно в течение часа) он сам перейдёт в режим настройки и поднимет Wi-Fi «Zelenka-{idLabel}».
+            </p>
+            <details className="text-[12px] text-neutral-500 dark:text-neutral-400">
+              <summary className="cursor-pointer">Или вручную (если датчик не на связи)</summary>
+              <ol className="list-decimal pl-5 space-y-1.5 mt-2">
+                <li>Отключите датчик от питания.</li>
+                <li>Зажмите сенсорную кнопку.</li>
+                <li>Удерживая её, подключите питание.</li>
+                <li>Продолжайте удерживать ≥ 3 секунды до мигания светодиода.</li>
+              </ol>
+            </details>
+          </div>
+        )}
+        primaryLabel={repairQueued ? 'Понятно' : 'Отправить команду'}
         cancelLabel="Закрыть"
-        onConfirm={() => setRepairOpen(false)}
-        onCancel={() => setRepairOpen(false)}
+        onConfirm={repairQueued ? closeRepair : handleQueueRepair}
+        onCancel={closeRepair}
+        pending={repairQueueing}
       />
     </main>
   );

@@ -91,11 +91,21 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
       })),
     });
 
+    // Pick up + clear pendingFactoryReset atomically. We read the row, then
+    // include it in deviceUpdate below so the same UPDATE that touches
+    // lastSeenAt also drops the flag — minimal window for a double-fire.
+    const devForReset = await prisma.device.findUnique({
+      where: { id: req.deviceId! },
+      select: { pendingFactoryReset: true },
+    });
+    const factoryResetPending = devForReset?.pendingFactoryReset === true;
+
     // Build the partial update for Device — battery counters (if any battery
     // samples in this batch) merged with metadata fields the firmware reported.
     const deviceUpdate: Record<string, unknown> = { lastSeenAt: now };
     if (deviceMeta?.firmwareVersion) deviceUpdate.firmwareVersion = deviceMeta.firmwareVersion;
     if (deviceMeta?.wifiRssi != null) deviceUpdate.wifiRssi = deviceMeta.wifiRssi;
+    if (factoryResetPending) deviceUpdate.pendingFactoryReset = false;
 
     if (samplesWithBattery.length > 0) {
       const dev = await prisma.device.findUnique({
@@ -204,6 +214,6 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    return { stored: samples.length };
+    return { stored: samples.length, pendingFactoryReset: factoryResetPending };
   });
 }

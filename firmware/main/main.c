@@ -134,6 +134,16 @@ static http_post_meta_t collect_post_meta(void) {
     };
 }
 
+// React to a pending factory reset signalled from the server. Wipes NVS and
+// reboots — the next boot has no config, drops into the SoftAP captive
+// portal, and the user can re-provision without ever touching the device.
+static void handle_factory_reset_if_requested(bool flag) {
+    if (!flag) return;
+    ESP_LOGW(TAG, "server requested factory reset; wiping NVS and rebooting into provisioning");
+    zelenka_cfg_wipe();
+    esp_restart();
+}
+
 // Drain SPIFFS-buffered batches (oldest first) for up to a few iterations.
 // Stops at first failed POST or empty buffer.
 static void flush_offline_pending(const zelenka_cfg_t *cfg) {
@@ -145,7 +155,9 @@ static void flush_offline_pending(const zelenka_cfg_t *cfg) {
             return;
         if (got == 0) return;
         http_post_meta_t meta = collect_post_meta();
-        if (http_post_batch(cfg->api_url, cfg->device_token, buf, epochs, got, &meta) != ESP_OK) return;
+        bool factory_reset = false;
+        if (http_post_batch(cfg->api_url, cfg->device_token, buf, epochs, got, &meta, &factory_reset) != ESP_OK) return;
+        handle_factory_reset_if_requested(factory_reset);
         offline_buffer_commit(got);
         if (remaining == 0) return;
     }
@@ -235,9 +247,11 @@ void app_main(void) {
         if (wifi_ok) {
             zelenka_led_set(ZELENKA_LED_SENDING);
             http_post_meta_t meta = collect_post_meta();
+            bool factory_reset = false;
             esp_err_t err = http_post_batch(
                 cfg.api_url, cfg.device_token,
-                batch_samples, batch_epochs, batch_count, &meta);
+                batch_samples, batch_epochs, batch_count, &meta, &factory_reset);
+            handle_factory_reset_if_requested(factory_reset);
             zelenka_led_set(err == ESP_OK ? ZELENKA_LED_OK : ZELENKA_LED_ERROR);
             if (err == ESP_OK) {
                 batch_count = 0;
@@ -288,9 +302,11 @@ void app_main(void) {
                 }
                 zelenka_led_set(ZELENKA_LED_SENDING);
                 http_post_meta_t meta = collect_post_meta();
+                bool factory_reset = false;
                 esp_err_t err = http_post_batch(
                     cfg.api_url, cfg.device_token,
-                    batch_samples, batch_epochs, batch_count, &meta);
+                    batch_samples, batch_epochs, batch_count, &meta, &factory_reset);
+                handle_factory_reset_if_requested(factory_reset);
                 if (err == ESP_OK) {
                     batch_count = 0;
                     zelenka_led_set(ZELENKA_LED_OK);
