@@ -60,6 +60,7 @@ export function DeviceManagePage() {
   const [unlinkOpen, setUnlinkOpen] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
   const [replaceOpen, setReplaceOpen] = useState(false);
+  const [replacing, setReplacing] = useState(false);
   const [repairOpen, setRepairOpen] = useState(false);
 
   useEffect(() => {
@@ -124,6 +125,21 @@ export function DeviceManagePage() {
       setUnlinking(false);
       setUnlinkOpen(false);
       setError('Не удалось отвязать');
+    }
+  };
+
+  const handleReplace = async () => {
+    if (!id) return;
+    setReplacing(true);
+    try {
+      const { device } = await api.replaceDevice(id);
+      // Pass the new device (with its deviceToken) via router state so the
+      // setup screen doesn't need an extra fetch.
+      navigate(`/devices/${device.id}/setup`, { replace: true, state: { device } });
+    } catch {
+      setReplacing(false);
+      setReplaceOpen(false);
+      setError('Не удалось заменить датчик');
     }
   };
 
@@ -255,11 +271,15 @@ export function DeviceManagePage() {
         tone="nominal"
         iconSlot={<span className="text-2xl">⇄</span>}
         title={`Заменить датчик ${idLabel}?`}
-        body="Эта возможность появится позже. Пока что физическая замена возможна только через отвязку — но история тогда не сохранится."
-        primaryLabel="Понятно"
-        cancelLabel="Закрыть"
-        onConfirm={() => setReplaceOpen(false)}
+        body={
+          info.plant
+            ? `Подключим новый датчик, перенесём на него историю «${info.plant.name}». Старый ${idLabel} отвяжется.`
+            : `Подключим новый датчик, перенесём на него всю историю. Старый ${idLabel} отвяжется.`
+        }
+        primaryLabel="Подключить новый"
+        onConfirm={handleReplace}
         onCancel={() => setReplaceOpen(false)}
+        pending={replacing}
       />
 
       <ConfirmDialog

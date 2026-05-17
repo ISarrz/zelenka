@@ -152,6 +152,8 @@ export const api = {
     }>(`/devices/${deviceId}/latest`),
   deleteDevice: (deviceId: string) =>
     request<null>(`/devices/${deviceId}`, { method: 'DELETE' }),
+  replaceDevice: (deviceId: string) =>
+    request<{ device: Device }>(`/devices/${deviceId}/replace`, { method: 'POST' }),
   firmwareManifest: () =>
     request<{ version: string; url: string; sha256: string; size: number }>(
       '/firmware/manifest.json',
