@@ -9,7 +9,6 @@ override anything below if there's a conflict:
 
 - `docs/mvp-plan.md` — phased MVP plan, hardware decisions, scope, risks.
 - `docs/design-summary.html` — wireframes and UX decisions per screen.
-- `docs/schema.jpg` — final wiring of the sensor hardware.
 
 Read the relevant section before touching code on a new feature.
 
@@ -25,7 +24,7 @@ infra/
   caddy/Caddyfile      reverse proxy + TLS
   perenual-seed/       refresh.sh + the .sql.gz dump (gitignored, 38 MB)
   perenual-init/       initdb hook that creates the read-only Perenual user
-docs/           mvp-plan.md, design-summary.html, schema.jpg
+docs/           mvp-plan.md, design-summary.html
 plant_id.txt    Plant.id API key (gitignored)
 ssh.txt         prod SSH creds (gitignored)
 ```

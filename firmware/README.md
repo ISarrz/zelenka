@@ -10,7 +10,7 @@ sample → POST to API → sleep 30 s. RGB LED reports state. No deep sleep,
 no buffer, no captive portal, no battery reading, no OTA — those land in
 Sprint 2.
 
-## Pin assignments (matches `docs/schema.jpg`)
+## Pin assignments
 
 | Pin                 | GPIO | Notes                          |
 | ------------------- | ---- | ------------------------------ |
