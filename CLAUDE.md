@@ -46,9 +46,11 @@ Run inside the `api` container (or locally with `npm install` first):
 - `npm run build` — `tsc`.
 - `npm start` — run compiled output.
 - `npm run prisma:generate` — regenerate Prisma client after schema edits.
-- `npx prisma db push` — apply schema to the connected DB (Sprint 0
-  strategy — no migration files yet). Switch to `prisma migrate dev` /
-  `migrate deploy` the first time the schema needs to evolve in Sprint 1.
+- `npx prisma migrate dev --name <slug>` — generate a new migration file
+  locally from a schema change and apply it to a dev database.
+- `npx prisma migrate deploy` — runs at container startup in prod to
+  apply any pending migrations. Baseline `0_init` was backfilled when we
+  switched off `db push` in Sprint 7.
 
 ### Routes (Sprint 0)
 

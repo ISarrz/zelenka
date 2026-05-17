@@ -35,7 +35,10 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/dist ./dist
 
 EXPOSE 8080
-# Sprint 0: use `prisma db push` (no migration files yet). Once the schema
-# starts evolving in Sprint 1, switch to `prisma migrate deploy` and commit
-# migrations under prisma/migrations/.
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/server.js"]
+# Migrations live under prisma/migrations/. On first boot after the
+# db-push → migrate switch (Sprint 7), the baseline `0_init` is marked
+# applied with `migrate resolve`; the `|| true` makes that step
+# idempotent on subsequent boots (resolve errors when the row already
+# exists, which we want to ignore). Then `migrate deploy` applies any
+# new migrations.
+CMD ["sh", "-c", "npx prisma migrate resolve --applied 0_init >/dev/null 2>&1 || true; npx prisma migrate deploy && node dist/server.js"]
