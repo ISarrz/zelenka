@@ -207,6 +207,11 @@ static esp_err_t adc_init(void) {
         s_soil_ok = true;
     if (adc_oneshot_config_channel(s_adc, BATTERY_ADC_CHANNEL, &ch_cfg) == ESP_OK)
         s_battery_ok = true;
+    // DIAG 0.1.6: also configure CH0/CH2/CH4 so we can scan all ADC1 channels
+    // and find which physical pin the battery-divider wire actually sits on.
+    (void)adc_oneshot_config_channel(s_adc, ADC_CHANNEL_0, &ch_cfg);
+    (void)adc_oneshot_config_channel(s_adc, ADC_CHANNEL_2, &ch_cfg);
+    (void)adc_oneshot_config_channel(s_adc, ADC_CHANNEL_4, &ch_cfg);
     return (s_soil_ok || s_battery_ok) ? ESP_OK : ESP_FAIL;
 }
 
@@ -286,6 +291,18 @@ void sensors_read(sensor_reading_t *out) {
             out->battery_raw = raw;
             out->has_battery = true;
         }
+    }
+    // DIAG 0.1.6: overlay CH0/CH2/CH4 raw onto BME pressure/humidity and BH lux
+    // so we can see all 5 ADC1 channels at once via the existing measurement
+    // payload. Reverted in 0.1.7 after we identify the real GPIO.
+    {
+        int ch0 = adc_read_raw(ADC_CHANNEL_0);
+        int ch2 = adc_read_raw(ADC_CHANNEL_2);
+        int ch4 = adc_read_raw(ADC_CHANNEL_4);
+        if (ch0 >= 0) out->pressure_hpa = (float)ch0;
+        if (ch2 >= 0) out->lux = (float)ch2;
+        // humidityPct API range is 0..100, so scale: actual raw = humidityPct * 41.
+        if (ch4 >= 0) out->humidity_pct = (float)ch4 / 41.0f;
     }
 }
 

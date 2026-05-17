@@ -13,6 +13,7 @@ import {
 } from '../api';
 import { BatteryIndicator, batteryLabel } from '../components/BatteryIndicator';
 import { BottomNav } from '../components/BottomNav';
+import { DragHandle } from '../components/DragHandle';
 import {
   isPushSupported,
   isStandalonePWA,
@@ -155,12 +156,10 @@ export function HomePage() {
         fallbackLetter={(plant?.name ?? device.name).trim().charAt(0).toUpperCase()}
       />
 
-      <button
-        onClick={() => navigate(`/devices/${device.id}`)}
-        className="text-xs text-status-ok underline"
-      >
-        Графики и журнал →
-      </button>
+      <DragHandle
+        label="Графики и журнал"
+        onActivate={() => navigate(`/devices/${device.id}`)}
+      />
 
       {!plant && (
         <button
