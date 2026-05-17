@@ -158,6 +158,10 @@ export function HomePage() {
       setActiveId(d.id);
       localStorage.setItem(ACTIVE_KEY, d.id);
       setStatus('no-data');
+      // Move the user into the provisioning walkthrough immediately — the
+      // setup screen carries the device token + captive-portal steps and
+      // polls /latest until the firmware checks in.
+      navigate(`/devices/${d.id}/setup`, { state: { device: d } });
     }} />;
   }
 
