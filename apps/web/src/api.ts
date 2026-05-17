@@ -66,6 +66,15 @@ export interface Measurement {
   lux: number | null;
   soilMoistureRaw: number | null;
   soilMoisturePct: number | null;
+  batteryRaw: number | null;
+}
+
+export type BatteryEstimate = 'full' | 'mid' | 'low' | 'critical';
+
+export interface BatteryStatus {
+  raw: number;
+  voltage: number;
+  estimate: BatteryEstimate;
 }
 
 export type Severity = 'ok' | 'warn' | 'alert' | 'unknown';
@@ -112,6 +121,7 @@ export const api = {
       plant: Plant | null;
       measurement: Measurement | null;
       verdict: Verdict | null;
+      battery: BatteryStatus | null;
     }>(`/devices/${deviceId}/latest`),
   identify: (image: File) => {
     const fd = new FormData();

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   api,
+  type BatteryStatus,
   type Device,
   type Measurement,
   type Plant,
@@ -10,6 +11,7 @@ import {
   type User,
   type Verdict,
 } from '../api';
+import { BatteryIndicator, batteryLabel } from '../components/BatteryIndicator';
 import {
   isPushSupported,
   isStandalonePWA,
@@ -33,6 +35,7 @@ export function HomePage() {
   );
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
+  const [battery, setBattery] = useState<BatteryStatus | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [iosPromptOpen, setIosPromptOpen] = useState(() => shouldShowIOSInstall());
 
@@ -79,6 +82,7 @@ export function HomePage() {
         if (cancelled) return;
         setMeasurement(latest.measurement);
         setVerdict(latest.verdict);
+        setBattery(latest.battery);
         setStatus(latest.measurement ? 'ready' : 'no-data');
       } catch (err) {
         const code = (err as { status?: number }).status;
@@ -118,7 +122,15 @@ export function HomePage() {
 
   return (
     <main className="relative min-h-full flex flex-col items-center justify-center p-6 gap-6">
-      <div className="absolute top-3 right-3">
+      <div className="absolute top-3 right-3 flex items-center gap-2">
+        {battery && (
+          <span
+            title={`Заряд: ${batteryLabel(battery.estimate)} (${battery.voltage.toFixed(2)} В)`}
+            className="inline-flex items-center"
+          >
+            <BatteryIndicator estimate={battery.estimate} className="h-3.5 w-auto" />
+          </span>
+        )}
         <button
           onClick={() => navigate('/settings')}
           aria-label="Настройки"
