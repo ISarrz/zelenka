@@ -72,6 +72,7 @@ export interface Measurement {
   soilMoisturePct: number | null;
   batteryRaw: number | null;
   batteryMv: number | null;
+  wifiRssi: number | null;
 }
 
 export interface FeedItem {

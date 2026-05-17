@@ -145,6 +145,8 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
           lux: true,
           soilMoistureRaw: true,
           batteryRaw: true,
+          batteryMv: true,
+          wifiRssi: true,
         },
       });
       return { samples: rows, downsampled: false };
@@ -158,6 +160,8 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       lux: number | null;
       soilMoistureRaw: number | null;
       batteryRaw: number | null;
+      batteryMv: number | null;
+      wifiRssi: number | null;
     }>>`
       SELECT
         date_trunc('hour', "measuredAt") AS bucket,
@@ -165,7 +169,9 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         AVG("humidityPct")::float     AS "humidityPct",
         AVG("lux")::float             AS "lux",
         AVG("soilMoistureRaw")::float AS "soilMoistureRaw",
-        AVG("batteryRaw")::float      AS "batteryRaw"
+        AVG("batteryRaw")::float      AS "batteryRaw",
+        AVG("batteryMv")::float       AS "batteryMv",
+        AVG("wifiRssi")::float        AS "wifiRssi"
       FROM "Measurement"
       WHERE "deviceId" = ${device.id}
         AND "measuredAt" >= ${since}
@@ -180,6 +186,8 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         lux: r.lux,
         soilMoistureRaw: r.soilMoistureRaw == null ? null : Math.round(r.soilMoistureRaw),
         batteryRaw: r.batteryRaw == null ? null : Math.round(r.batteryRaw),
+        batteryMv: r.batteryMv == null ? null : Math.round(r.batteryMv),
+        wifiRssi: r.wifiRssi == null ? null : Math.round(r.wifiRssi),
       })),
       downsampled: true,
     };

@@ -216,5 +216,10 @@ model Measurement {
   batteryRaw      Int?
   batteryMv       Int?
 
+  // Wi-Fi signal at POST time, copied from the batch-level device meta onto
+  // every row of the batch (all samples were taken in the same wake window,
+  // Wi-Fi was off in between). Negative dBm, e.g. -52.
+  wifiRssi        Int?
+
   @@index([deviceId, measuredAt])
 }

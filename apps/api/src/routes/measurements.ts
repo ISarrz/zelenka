@@ -85,6 +85,9 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
         soilMoisturePct: s.soilMoisturePct ?? null,
         batteryRaw: s.batteryRaw ?? null,
         batteryMv: s.batteryMv ?? null,
+        // Stamp the batch-level RSSI onto every sample so history queries
+        // can plot signal-strength over time alongside the sensor channels.
+        wifiRssi: deviceMeta?.wifiRssi ?? null,
       })),
     });
 
