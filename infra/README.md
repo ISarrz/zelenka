@@ -40,6 +40,19 @@ docker volume rm zelenka_perenual_db_data   # confirm exact name first
 docker compose -f infra/docker-compose.yml --env-file infra/.env.dev up --build
 ```
 
+To also refresh the species photos that the api serves via
+`/api/plants/species/:id/photo` (these are read-only-mounted into the
+container from `infra/perenual-photos/`), rsync them straight to prod
+incrementally:
+
+```bash
+PROD_PASS=$(cat ssh.txt | sed -n 2p) infra/perenual-seed/refresh-photos.sh
+```
+
+The script filters down to `<species_id>/medium.jpg` only — about 380 MB
+of the 5.6 GB upstream image dump — and rsync skips files whose size +
+mtime haven't changed, so re-runs are cheap.
+
 ## Deploy to the server
 
 ```bash
