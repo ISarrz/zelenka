@@ -131,6 +131,7 @@ export const api = {
       plant: Plant | null;
       measurement: Measurement | null;
       verdict: Verdict | null;
+      thresholds: Record<string, Record<string, number> | undefined>;
       battery: BatteryStatus | null;
     }>(`/devices/${deviceId}/latest`),
   deleteDevice: (deviceId: string) =>

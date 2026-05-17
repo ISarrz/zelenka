@@ -172,7 +172,7 @@ export function HomePage() {
 
       <PushControl />
 
-      <Grid m={measurement} v={verdict} />
+      <Grid m={measurement} v={verdict} deviceId={device.id} />
 
       {status === 'no-data' && (
         <p className="text-sm text-neutral-500 text-center max-w-sm">
@@ -276,26 +276,41 @@ function Ring({
   );
 }
 
-function Grid({ m, v }: { m: Measurement | null; v: Verdict | null }) {
+function Grid({ m, v, deviceId }: { m: Measurement | null; v: Verdict | null; deviceId: string }) {
+  const navigate = useNavigate();
   return (
     <div className="grid grid-cols-2 gap-3 w-full max-w-md">
-      <Cell label="Темп." value={m?.temperatureC} unit="°C" sev={v?.perParam.temperatureC} />
-      <Cell label="Влажность" value={m?.humidityPct} unit="%" sev={v?.perParam.humidityPct} />
-      <Cell label="Свет" value={m?.lux} unit="lx" sev={v?.perParam.lux} />
+      <Cell
+        label="Темп." value={m?.temperatureC} unit="°C"
+        sev={v?.perParam.temperatureC}
+        onClick={() => navigate(`/devices/${deviceId}/p/temperature`)}
+      />
+      <Cell
+        label="Влажность" value={m?.humidityPct} unit="%"
+        sev={v?.perParam.humidityPct}
+        onClick={() => navigate(`/devices/${deviceId}/p/humidity`)}
+      />
+      <Cell
+        label="Свет" value={m?.lux} unit="lx"
+        sev={v?.perParam.lux}
+        onClick={() => navigate(`/devices/${deviceId}/p/light`)}
+      />
       <Cell
         label="Почва"
         value={m?.soilMoisturePct ?? m?.soilMoistureRaw}
         unit={m?.soilMoisturePct == null ? 'raw' : '%'}
         sev={v?.perParam.soilMoistureRaw}
+        onClick={() => navigate(`/devices/${deviceId}/p/soil`)}
       />
     </div>
   );
 }
 
 function Cell({
-  label, value, unit, sev,
+  label, value, unit, sev, onClick,
 }: {
-  label: string; value: number | null | undefined; unit: string; sev: Severity | undefined;
+  label: string; value: number | null | undefined; unit: string;
+  sev: Severity | undefined; onClick: () => void;
 }) {
   const display = value == null
     ? '—'
@@ -308,13 +323,16 @@ function Cell({
     ? 'border-status-ok/40'
     : 'border-neutral-200 dark:border-neutral-800';
   return (
-    <div className={`rounded-2xl border-2 p-4 ${borderClass}`}>
+    <button
+      onClick={onClick}
+      className={`rounded-2xl border-2 p-4 text-left active:scale-[0.98] transition-transform ${borderClass}`}
+    >
       <div className="text-sm text-neutral-500">{label}</div>
       <div className="mt-1 text-2xl font-semibold tabular-nums">
         {display}
         <span className="text-base font-normal text-neutral-500 ml-1">{unit}</span>
       </div>
-    </div>
+    </button>
   );
 }
 
