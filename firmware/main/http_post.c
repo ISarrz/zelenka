@@ -39,6 +39,11 @@ static int format_sample_json(char *buf, size_t cap, const sensor_reading_t *r, 
     if (r->has_soil) {
         off += snprintf(buf + off, cap - off, "%s\"soilMoistureRaw\":%d",
                         first ? "" : ",", r->soil_moisture_raw);
+        first = false;
+    }
+    if (r->has_battery) {
+        off += snprintf(buf + off, cap - off, "%s\"batteryRaw\":%d",
+                        first ? "" : ",", r->battery_raw);
     }
     off += snprintf(buf + off, cap - off, "}");
     return (int)off;

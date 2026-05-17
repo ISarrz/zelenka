@@ -36,6 +36,18 @@ esp_err_t offline_buffer_init(void) {
     size_t total = 0, used = 0;
     esp_spiffs_info("storage", &total, &used);
     ESP_LOGI(TAG, "spiffs ok: %u/%u bytes used", (unsigned)used, (unsigned)total);
+
+    // If sensor_reading_t layout changed across OTA upgrades, the pending file
+    // is now mis-aligned and would deserialize garbage. Detect by file size
+    // not divisible by the new record size and drop it.
+    struct stat st;
+    if (stat(PENDING_PATH, &st) == 0 && st.st_size > 0
+        && (st.st_size % sizeof(record_t)) != 0) {
+        ESP_LOGW(TAG, "pending.bin size %lld not multiple of record_t %u — "
+                      "wiping (likely struct layout changed across firmware versions)",
+                 (long long)st.st_size, (unsigned)sizeof(record_t));
+        unlink(PENDING_PATH);
+    }
     return ESP_OK;
 }
 

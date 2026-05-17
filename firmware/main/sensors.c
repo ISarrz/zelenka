@@ -186,30 +186,33 @@ static esp_err_t bh1750_read(float *lux) {
     return ESP_OK;
 }
 
-// ---- Soil ADC -------------------------------------------------------------
+// ---- ADC (soil + battery) -------------------------------------------------
 
-#define SOIL_ADC_UNIT     ADC_UNIT_1
-#define SOIL_ADC_CHANNEL  ADC_CHANNEL_1   // GPIO1 on ESP32-C3
+#define ADC_UNIT             ADC_UNIT_1
+#define SOIL_ADC_CHANNEL     ADC_CHANNEL_1   // GPIO1 on ESP32-C3
+#define BATTERY_ADC_CHANNEL  ADC_CHANNEL_3   // GPIO3, 1:1 divider on BAT+
 
 static adc_oneshot_unit_handle_t s_adc;
 static bool s_soil_ok = false;
+static bool s_battery_ok = false;
 
-static esp_err_t soil_init(void) {
-    adc_oneshot_unit_init_cfg_t unit_cfg = {.unit_id = SOIL_ADC_UNIT};
+static esp_err_t adc_init(void) {
+    adc_oneshot_unit_init_cfg_t unit_cfg = {.unit_id = ADC_UNIT};
     if (adc_oneshot_new_unit(&unit_cfg, &s_adc) != ESP_OK) return ESP_FAIL;
     adc_oneshot_chan_cfg_t ch_cfg = {
         .atten = ADC_ATTEN_DB_12,
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
-    if (adc_oneshot_config_channel(s_adc, SOIL_ADC_CHANNEL, &ch_cfg) != ESP_OK)
-        return ESP_FAIL;
-    s_soil_ok = true;
-    return ESP_OK;
+    if (adc_oneshot_config_channel(s_adc, SOIL_ADC_CHANNEL, &ch_cfg) == ESP_OK)
+        s_soil_ok = true;
+    if (adc_oneshot_config_channel(s_adc, BATTERY_ADC_CHANNEL, &ch_cfg) == ESP_OK)
+        s_battery_ok = true;
+    return (s_soil_ok || s_battery_ok) ? ESP_OK : ESP_FAIL;
 }
 
-static int soil_read_raw(void) {
+static int adc_read_raw(adc_channel_t ch) {
     int raw = 0;
-    if (adc_oneshot_read(s_adc, SOIL_ADC_CHANNEL, &raw) != ESP_OK) return -1;
+    if (adc_oneshot_read(s_adc, ch, &raw) != ESP_OK) return -1;
     return raw;
 }
 
@@ -251,7 +254,7 @@ void sensors_init(void) {
         bme280_init_alt();
     }
     bh1750_init();
-    soil_init();
+    adc_init();
 
     // BH1750 first measurement takes ~120ms in HR mode.
     vTaskDelay(pdMS_TO_TICKS(180));
@@ -271,10 +274,17 @@ void sensors_read(sensor_reading_t *out) {
         }
     }
     if (s_soil_ok) {
-        int raw = soil_read_raw();
+        int raw = adc_read_raw(SOIL_ADC_CHANNEL);
         if (raw >= 0) {
             out->soil_moisture_raw = raw;
             out->has_soil = true;
+        }
+    }
+    if (s_battery_ok) {
+        int raw = adc_read_raw(BATTERY_ADC_CHANNEL);
+        if (raw >= 0) {
+            out->battery_raw = raw;
+            out->has_battery = true;
         }
     }
 }

@@ -77,8 +77,8 @@ static void sample_averaged(sensor_reading_t *out) {
     *out = (sensor_reading_t){0};
     float t_sum = 0, h_sum = 0, p_sum = 0, lux_sum = 0;
     int   t_n = 0, h_n = 0, p_n = 0, lux_n = 0;
-    long  soil_sum = 0;
-    int   soil_n = 0;
+    long  soil_sum = 0, battery_sum = 0;
+    int   soil_n = 0, battery_n = 0;
 
     for (int i = 0; i < SAMPLE_AVG_N; i++) {
         sensor_reading_t r;
@@ -94,6 +94,9 @@ static void sample_averaged(sensor_reading_t *out) {
         if (r.has_soil) {
             soil_sum += r.soil_moisture_raw; soil_n++;
         }
+        if (r.has_battery) {
+            battery_sum += r.battery_raw; battery_n++;
+        }
         if (i < SAMPLE_AVG_N - 1) vTaskDelay(pdMS_TO_TICKS(100));
     }
     if (t_n   > 0) { out->temperature_c   = t_sum / t_n;
@@ -104,6 +107,8 @@ static void sample_averaged(sensor_reading_t *out) {
                      out->has_bh1750 = true; }
     if (soil_n > 0){ out->soil_moisture_raw = (int)(soil_sum / soil_n);
                      out->has_soil = true; }
+    if (battery_n > 0) { out->battery_raw = (int)(battery_sum / battery_n);
+                         out->has_battery = true; }
 }
 
 // Drain SPIFFS-buffered batches (oldest first) for up to a few iterations.

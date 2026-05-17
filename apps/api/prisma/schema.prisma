@@ -195,5 +195,12 @@ model Measurement {
   soilMoistureRaw Int?
   soilMoisturePct Float?
 
+  // Battery divider raw read from ADC1_CH3 (GPIO3 on the C3 Super Mini).
+  // 1:1 resistor divider (100k:100k) on BAT+ of TP4056 → linear in V_bat
+  // over the Li-Ion working range 3.0–4.2 V. Raw → voltage conversion lives
+  // in src/lib/battery.ts; storage stays raw to keep DB writes cheap and
+  // resolution untouched.
+  batteryRaw      Int?
+
   @@index([deviceId, measuredAt])
 }

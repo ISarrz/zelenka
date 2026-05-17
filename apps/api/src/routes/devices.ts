@@ -93,6 +93,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
           humidityPct: true,
           lux: true,
           soilMoistureRaw: true,
+          batteryRaw: true,
         },
       });
       return { samples: rows, downsampled: false };
@@ -105,13 +106,15 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       humidityPct: number | null;
       lux: number | null;
       soilMoistureRaw: number | null;
+      batteryRaw: number | null;
     }>>`
       SELECT
         date_trunc('hour', "measuredAt") AS bucket,
         AVG("temperatureC")::float    AS "temperatureC",
         AVG("humidityPct")::float     AS "humidityPct",
         AVG("lux")::float             AS "lux",
-        AVG("soilMoistureRaw")::float AS "soilMoistureRaw"
+        AVG("soilMoistureRaw")::float AS "soilMoistureRaw",
+        AVG("batteryRaw")::float      AS "batteryRaw"
       FROM "Measurement"
       WHERE "deviceId" = ${device.id}
         AND "measuredAt" >= ${since}
@@ -125,6 +128,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         humidityPct: r.humidityPct,
         lux: r.lux,
         soilMoistureRaw: r.soilMoistureRaw == null ? null : Math.round(r.soilMoistureRaw),
+        batteryRaw: r.batteryRaw == null ? null : Math.round(r.batteryRaw),
       })),
       downsampled: true,
     };

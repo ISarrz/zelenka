@@ -18,6 +18,7 @@ const Sample = z.object({
   lux: z.number().finite().min(0).nullable().optional(),
   soilMoistureRaw: z.number().int().nullable().optional(),
   soilMoisturePct: z.number().finite().min(0).max(100).nullable().optional(),
+  batteryRaw: z.number().int().min(0).max(4095).nullable().optional(),
 });
 
 const Batch = z.object({ samples: z.array(Sample).min(1).max(64) });
@@ -56,6 +57,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
         lux: s.lux ?? null,
         soilMoistureRaw: s.soilMoistureRaw ?? null,
         soilMoisturePct: s.soilMoisturePct ?? null,
+        batteryRaw: s.batteryRaw ?? null,
       })),
     });
 
