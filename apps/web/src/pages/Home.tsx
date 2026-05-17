@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   api,
@@ -26,6 +26,9 @@ import {
 
 type Status = 'loading' | 'no-device' | 'no-data' | 'ready';
 const ACTIVE_KEY = 'zelenka_active_device';
+const SWIPE_HINT_SEEN_KEY = 'zelenka_swipe_hint_seen';
+const SWIPE_MIN_DX = 60;
+const SWIPE_MAX_DY = 40;
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -40,6 +43,51 @@ export function HomePage() {
   const [battery, setBattery] = useState<BatteryStatus | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [iosPromptOpen, setIosPromptOpen] = useState(() => shouldShowIOSInstall());
+  const [showSwipeHint, setShowSwipeHint] = useState(false);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  // One-time onboarding overlay when the user gains their second device — by
+  // that point swipe is meaningful and they likely don't know about it.
+  useEffect(() => {
+    if (devices.length < 2) return;
+    if (typeof window === 'undefined') return;
+    if (localStorage.getItem(SWIPE_HINT_SEEN_KEY)) return;
+    setShowSwipeHint(true);
+  }, [devices.length]);
+
+  const switchByDelta = (delta: number) => {
+    if (!activeId || devices.length < 2) return;
+    const idx = devices.findIndex((d) => d.id === activeId);
+    if (idx < 0) return;
+    const next = idx + delta;
+    if (next < 0 || next >= devices.length) return;
+    const id = devices[next].id;
+    setActiveId(id);
+    if (typeof window !== 'undefined') localStorage.setItem(ACTIVE_KEY, id);
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    if (!t) return;
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) < SWIPE_MIN_DX || Math.abs(dy) > SWIPE_MAX_DY) return;
+    // Left-swipe (dx<0) = next plant, right-swipe (dx>0) = prev plant.
+    switchByDelta(dx < 0 ? 1 : -1);
+  };
+
+  const dismissSwipeHint = () => {
+    if (typeof window !== 'undefined') localStorage.setItem(SWIPE_HINT_SEEN_KEY, '1');
+    setShowSwipeHint(false);
+  };
 
   // List devices once; pick a sensible active id; keep the list in state.
   useEffect(() => {
@@ -123,7 +171,11 @@ export function HomePage() {
     ?? (plant ? 'общий профиль' : null);
 
   return (
-    <main className="relative min-h-full flex flex-col items-center justify-center p-6 pb-20 gap-6">
+    <main
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      className="relative min-h-full flex flex-col items-center justify-center p-6 pb-20 gap-6"
+    >
       <div className="absolute top-3 right-3 flex items-center gap-2">
         {battery && (
           <button
@@ -202,7 +254,37 @@ export function HomePage() {
         />
       )}
       <BottomNav active="plant" />
+      {showSwipeHint && <SwipeHintOverlay onDismiss={dismissSwipeHint} />}
     </main>
+  );
+}
+
+function SwipeHintOverlay({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div
+      onClick={onDismiss}
+      className="fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-6"
+      role="presentation"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-neutral-900 rounded-2xl max-w-xs w-full p-6 text-center"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="text-3xl mb-2" aria-hidden>↔</div>
+        <div className="text-base font-medium">Свайпните, чтобы переключиться</div>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2 leading-relaxed">
+          У вас два или больше растений. Проведите пальцем влево или вправо по главному экрану, чтобы перейти к следующему.
+        </p>
+        <button
+          onClick={onDismiss}
+          className="mt-5 w-full py-2.5 rounded-lg bg-status-ok text-white text-sm font-medium"
+        >
+          Понятно
+        </button>
+      </div>
+    </div>
   );
 }
 
