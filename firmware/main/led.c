@@ -4,9 +4,9 @@
 
 // GPIO assignments per the schematic. Common-cathode RGB LED — set HIGH to
 // light the channel.
-#define LED_R_GPIO GPIO_NUM_5
-#define LED_G_GPIO GPIO_NUM_6
-#define LED_B_GPIO GPIO_NUM_7
+#define LED_R_GPIO GPIO_NUM_8
+#define LED_G_GPIO GPIO_NUM_9
+#define LED_B_GPIO GPIO_NUM_10
 
 static void write_rgb(int r, int g, int b) {
     gpio_set_level(LED_R_GPIO, r);

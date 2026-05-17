@@ -14,13 +14,14 @@ Sprint 2.
 
 | Pin                 | GPIO | Notes                          |
 | ------------------- | ---- | ------------------------------ |
-| I2C SDA             | 8    | BME280 + BH1750 (shared bus)   |
-| I2C SCL             | 9    | BME280 + BH1750 (shared bus)   |
+| I2C SDA             | 6    | BME280 + BH1750 (shared bus)   |
+| I2C SCL             | 7    | BME280 + BH1750 (shared bus)   |
 | Soil moisture (ADC) | 1    | ADC1_CH1, atten 12 dB          |
-| LED R               | 5    | common-cathode RGB             |
-| LED G               | 6    | common-cathode RGB             |
-| LED B               | 7    | common-cathode RGB             |
-| Touch button DO     | 10   | TTP223 DO; unused in Sprint 0  |
+| Battery divider     | 3    | ADC1_CH3, atten 12 dB; 100k:100k on BAT+ |
+| LED R               | 8    | common-cathode RGB             |
+| LED G               | 9    | common-cathode RGB             |
+| LED B               | 10   | common-cathode RGB             |
+| Touch button DO     | 5    | TTP223 DO                      |
 
 If your board wires the LED or touch differently, change the `#define`s in
 `main/led.c` (and later `main/touch.c`).
