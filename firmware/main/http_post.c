@@ -54,7 +54,8 @@ esp_err_t http_post_batch(
     const char *device_token,
     const sensor_reading_t *samples,
     const int64_t *epoch_seconds,
-    size_t n
+    size_t n,
+    const http_post_meta_t *meta
 ) {
     if (n == 0 || !device_token || !device_token[0]) return ESP_ERR_INVALID_ARG;
 
@@ -69,7 +70,22 @@ esp_err_t http_post_batch(
                                   epoch_seconds ? epoch_seconds[i] : 0);
         if (off >= BODY_MAX - 16) break;
     }
-    off += snprintf(body + off, BODY_MAX - off, "]}");
+    off += snprintf(body + off, BODY_MAX - off, "]");
+    if (meta && (meta->firmware_version || meta->wifi_rssi)) {
+        off += snprintf(body + off, BODY_MAX - off, ",\"device\":{");
+        bool first = true;
+        if (meta->firmware_version) {
+            off += snprintf(body + off, BODY_MAX - off,
+                            "\"firmwareVersion\":\"%s\"", meta->firmware_version);
+            first = false;
+        }
+        if (meta->wifi_rssi) {
+            off += snprintf(body + off, BODY_MAX - off,
+                            "%s\"wifiRssi\":%d", first ? "" : ",", *meta->wifi_rssi);
+        }
+        off += snprintf(body + off, BODY_MAX - off, "}");
+    }
+    off += snprintf(body + off, BODY_MAX - off, "}");
 
     char auth[128];
     snprintf(auth, sizeof(auth), "Bearer %s", device_token);

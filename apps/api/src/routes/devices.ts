@@ -41,6 +41,19 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
     return { device };
   });
 
+  // Hard delete — owner only. Prisma cascades Measurement rows via the
+  // onDelete: Cascade relation; the linked Plant has onDelete: SetNull so
+  // history about the plant survives (the user might want to re-create the
+  // device and rebind later — though for now the UI doesn't expose that).
+  app.delete('/api/devices/:id', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const device = await prisma.device.findFirst({ where: { id, userId: req.userId } });
+    if (!device) { reply.code(404); return { error: 'not found' }; }
+    await prisma.device.delete({ where: { id } });
+    reply.code(204);
+    return null;
+  });
+
   // Bind a plant to a device. Creates the Plant row (one per device) or
   // updates it if the user already had one for this device.
   app.post('/api/devices/:id/bind-plant', { preHandler: requireUser }, async (req, reply) => {
@@ -164,7 +177,13 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       : null;
 
     return {
-      device: { id: device.id, name: device.name },
+      device: {
+        id: device.id,
+        name: device.name,
+        firmwareVersion: device.firmwareVersion,
+        wifiRssi: device.wifiRssi,
+        lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
+      },
       plant: device.plant,
       measurement: latest,
       verdict,

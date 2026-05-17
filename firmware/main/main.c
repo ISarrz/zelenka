@@ -16,11 +16,13 @@
 #include <string.h>
 #include <time.h>
 
+#include "esp_app_desc.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
 #include "esp_sleep.h"
 #include "esp_sntp.h"
+#include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
@@ -111,6 +113,25 @@ static void sample_averaged(sensor_reading_t *out) {
                          out->has_battery = true; }
 }
 
+// Fresh device metadata (firmware version + current Wi-Fi RSSI) to bolt onto
+// each POST. Wi-Fi must be up before calling. Strings/integers live in static
+// storage so the returned struct stays valid for the rest of the POST cycle.
+static http_post_meta_t collect_post_meta(void) {
+    static char fw_version[32];
+    static int  wifi_rssi;
+    const esp_app_desc_t *desc = esp_app_get_description();
+    snprintf(fw_version, sizeof(fw_version), "%s", desc ? desc->version : "unknown");
+
+    wifi_ap_record_t ap;
+    const bool got_rssi = esp_wifi_sta_get_ap_info(&ap) == ESP_OK;
+    if (got_rssi) wifi_rssi = ap.rssi;
+
+    return (http_post_meta_t){
+        .firmware_version = fw_version,
+        .wifi_rssi        = got_rssi ? &wifi_rssi : NULL,
+    };
+}
+
 // Drain SPIFFS-buffered batches (oldest first) for up to a few iterations.
 // Stops at first failed POST or empty buffer.
 static void flush_offline_pending(const zelenka_cfg_t *cfg) {
@@ -121,7 +142,8 @@ static void flush_offline_pending(const zelenka_cfg_t *cfg) {
         if (offline_buffer_drain_read(buf, epochs, CONFIG_ZELENKA_BATCH_SIZE, &got, &remaining) != ESP_OK)
             return;
         if (got == 0) return;
-        if (http_post_batch(cfg->api_url, cfg->device_token, buf, epochs, got) != ESP_OK) return;
+        http_post_meta_t meta = collect_post_meta();
+        if (http_post_batch(cfg->api_url, cfg->device_token, buf, epochs, got, &meta) != ESP_OK) return;
         offline_buffer_commit(got);
         if (remaining == 0) return;
     }
@@ -210,9 +232,10 @@ void app_main(void) {
 
         if (wifi_ok) {
             zelenka_led_set(ZELENKA_LED_SENDING);
+            http_post_meta_t meta = collect_post_meta();
             esp_err_t err = http_post_batch(
                 cfg.api_url, cfg.device_token,
-                batch_samples, batch_epochs, batch_count);
+                batch_samples, batch_epochs, batch_count, &meta);
             zelenka_led_set(err == ESP_OK ? ZELENKA_LED_OK : ZELENKA_LED_ERROR);
             if (err == ESP_OK) {
                 batch_count = 0;
@@ -262,9 +285,10 @@ void app_main(void) {
                     }
                 }
                 zelenka_led_set(ZELENKA_LED_SENDING);
+                http_post_meta_t meta = collect_post_meta();
                 esp_err_t err = http_post_batch(
                     cfg.api_url, cfg.device_token,
-                    batch_samples, batch_epochs, batch_count);
+                    batch_samples, batch_epochs, batch_count, &meta);
                 if (err == ESP_OK) {
                     batch_count = 0;
                     zelenka_led_set(ZELENKA_LED_OK);

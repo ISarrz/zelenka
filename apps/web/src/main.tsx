@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthPage } from './pages/Auth';
 import { AuthConsumePage } from './pages/AuthConsume';
+import { DeviceManagePage } from './pages/DeviceManage';
 import { HomePage } from './pages/Home';
 import { IdentifyPage } from './pages/Identify';
 import { PlantCardPage } from './pages/PlantCard';
@@ -17,6 +18,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/auth/consume" element={<AuthConsumePage />} />
         <Route path="/devices/:deviceId/identify" element={<IdentifyPage />} />
+        <Route path="/devices/:id/manage" element={<DeviceManagePage />} />
         <Route path="/devices/:id" element={<PlantCardPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

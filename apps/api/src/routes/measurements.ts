@@ -22,7 +22,15 @@ const Sample = z.object({
   batteryRaw: z.number().int().min(0).max(4095).nullable().optional(),
 });
 
-const Batch = z.object({ samples: z.array(Sample).min(1).max(64) });
+const DeviceMeta = z.object({
+  firmwareVersion: z.string().min(1).max(32).optional(),
+  wifiRssi: z.number().int().min(-150).max(0).optional(),
+});
+
+const Batch = z.object({
+  samples: z.array(Sample).min(1).max(64),
+  device: DeviceMeta.optional(),
+});
 
 export async function measurementRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/device/measurements', { preHandler: requireDevice }, async (req, reply) => {
@@ -31,6 +39,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
     // schema (all fields optional!) and silently drop the array.
     const body = req.body as Record<string, unknown> | null;
     let samples: z.infer<typeof Sample>[];
+    let deviceMeta: z.infer<typeof DeviceMeta> | undefined;
     if (body && typeof body === 'object' && 'samples' in body) {
       const parsed = Batch.safeParse(body);
       if (!parsed.success) {
@@ -38,6 +47,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
         return { error: 'invalid batch', issues: parsed.error.issues };
       }
       samples = parsed.data.samples;
+      deviceMeta = parsed.data.device;
     } else {
       const parsed = Sample.safeParse(body);
       if (!parsed.success) {
@@ -76,6 +86,12 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
       })),
     });
 
+    // Build the partial update for Device — battery counters (if any battery
+    // samples in this batch) merged with metadata fields the firmware reported.
+    const deviceUpdate: Record<string, unknown> = { lastSeenAt: now };
+    if (deviceMeta?.firmwareVersion) deviceUpdate.firmwareVersion = deviceMeta.firmwareVersion;
+    if (deviceMeta?.wifiRssi != null) deviceUpdate.wifiRssi = deviceMeta.wifiRssi;
+
     if (samplesWithBattery.length > 0) {
       const dev = await prisma.device.findUnique({
         where: { id: req.deviceId! },
@@ -88,16 +104,13 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
           priorVoltage: priorBatteryVoltage,
           freshBatteryRaws: samplesWithBattery.map((s) => s.batteryRaw),
         });
-        await prisma.device.update({
-          where: { id: req.deviceId! },
-          data: {
-            cyclesSinceLastCharge: upd.newCounter,
-            cyclesPerFullBattery: upd.newPerFull,
-            ...(upd.chargeDetected ? { lastChargeAt: now } : {}),
-          },
-        });
+        deviceUpdate.cyclesSinceLastCharge = upd.newCounter;
+        deviceUpdate.cyclesPerFullBattery = upd.newPerFull;
+        if (upd.chargeDetected) deviceUpdate.lastChargeAt = now;
       }
     }
+
+    await prisma.device.update({ where: { id: req.deviceId! }, data: deviceUpdate });
 
     // Rule engine — evaluate only against the most recent sample in the
     // batch (the older ones are stale by definition).

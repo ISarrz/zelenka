@@ -140,7 +140,7 @@ export function SettingsPage() {
                 <li key={d.id} className="px-3 py-2 flex items-center gap-3">
                   <span className={`w-2.5 h-2.5 rounded-full ${statusDotClass(d.plant?.lastRingStatus)}`} />
                   <button
-                    onClick={() => navigate(`/devices/${d.id}`)}
+                    onClick={() => navigate(`/devices/${d.id}/manage`)}
                     className="flex-1 text-left"
                   >
                     <div className="text-sm font-medium">{name}</div>

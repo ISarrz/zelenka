@@ -124,12 +124,14 @@ export function HomePage() {
     <main className="relative min-h-full flex flex-col items-center justify-center p-6 gap-6">
       <div className="absolute top-3 right-3 flex items-center gap-2">
         {battery && (
-          <span
-            title={`Заряд: ${batteryLabel(battery.estimate)} (${battery.voltage.toFixed(2)} В)`}
-            className="inline-flex items-center"
+          <button
+            onClick={() => navigate(`/devices/${device.id}/manage`)}
+            title={`Заряд: ${batteryLabel(battery.estimate)} (${battery.voltage.toFixed(2)} В) — открыть управление датчиком`}
+            aria-label="Управление датчиком"
+            className="inline-flex items-center p-1"
           >
             <BatteryIndicator estimate={battery.estimate} className="h-3.5 w-auto" />
-          </span>
+          </button>
         )}
         <button
           onClick={() => navigate('/settings')}

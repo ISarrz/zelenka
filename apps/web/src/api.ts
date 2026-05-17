@@ -121,12 +121,24 @@ export const api = {
     }),
   latestMeasurement: (deviceId: string) =>
     request<{
-      device: { id: string; name: string };
+      device: {
+        id: string;
+        name: string;
+        firmwareVersion: string | null;
+        wifiRssi: number | null;
+        lastSeenAt: string | null;
+      };
       plant: Plant | null;
       measurement: Measurement | null;
       verdict: Verdict | null;
       battery: BatteryStatus | null;
     }>(`/devices/${deviceId}/latest`),
+  deleteDevice: (deviceId: string) =>
+    request<null>(`/devices/${deviceId}`, { method: 'DELETE' }),
+  firmwareManifest: () =>
+    request<{ version: string; url: string; sha256: string; size: number }>(
+      '/firmware/manifest.json',
+    ),
   identify: (image: File) => {
     const fd = new FormData();
     fd.append('image', image);

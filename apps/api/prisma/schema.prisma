@@ -77,6 +77,12 @@ model Device {
   cyclesPerFullBattery  Int?
   lastChargeAt          DateTime?
 
+  // Last-known firmware version + Wi-Fi signal strength reported on the most
+  // recent POST. Surfaced in the Управление датчиком screen.
+  firmwareVersion       String?
+  wifiRssi              Int?
+  lastSeenAt            DateTime?
+
   measurements Measurement[]
   plant        Plant?
 
