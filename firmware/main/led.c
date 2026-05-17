@@ -8,10 +8,14 @@
 #define LED_G_GPIO GPIO_NUM_9
 #define LED_B_GPIO GPIO_NUM_10
 
+// Common-anode RGB: the LED module has a shared +3.3 V rail and the R/G/B
+// pins are cathodes. Driving the GPIO LOW pulls the cathode to ground →
+// current flows → channel lights. HIGH = off. (Common-cathode modules want
+// the opposite logic; flip these inverts if you swap to one.)
 static void write_rgb(int r, int g, int b) {
-    gpio_set_level(LED_R_GPIO, r);
-    gpio_set_level(LED_G_GPIO, g);
-    gpio_set_level(LED_B_GPIO, b);
+    gpio_set_level(LED_R_GPIO, r ? 0 : 1);
+    gpio_set_level(LED_G_GPIO, g ? 0 : 1);
+    gpio_set_level(LED_B_GPIO, b ? 0 : 1);
 }
 
 void zelenka_led_init(void) {

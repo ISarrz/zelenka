@@ -13,20 +13,37 @@ export function AuthConsumePage() {
       setError('Ссылка некорректная.');
       return;
     }
+    const pinTimezone = async () => {
+      try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (tz) await api.updateSettings({ timezone: tz });
+      } catch {
+        /* timezone is a nice-to-have; never block login on it */
+      }
+    };
+
     api
       .consumeMagicLink(token)
       .then(async () => {
         // Pin the user's actual browser timezone on first login so quiet
         // hours / morning digest don't drift if the server moves regions.
-        try {
-          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-          if (tz) await api.updateSettings({ timezone: tz });
-        } catch {
-          /* timezone is a nice-to-have; never block login on it */
-        }
+        await pinTimezone();
         navigate('/', { replace: true });
       })
-      .catch((err: Error) => setError(err.message));
+      .catch(async (err: Error) => {
+        // Common case: the link got hit twice (Gmail in-app browser + system
+        // browser, click-then-refresh, etc.) and the second consume hits an
+        // already-used token. If the first consume succeeded silently, the
+        // session cookie is already set — verify with /api/me and slide home
+        // instead of showing a scary error.
+        try {
+          await api.me();
+          await pinTimezone();
+          navigate('/', { replace: true });
+        } catch {
+          setError(err.message);
+        }
+      });
   }, [params, navigate]);
 
   return (
