@@ -29,6 +29,9 @@ interface PlantCtx {
   userId: string;
   name: string;
   thresholds: CareThresholds;
+  // Per-species push overrides keyed by TriggerKind. Falls back to defaults
+  // in copy() below when null or when a kind isn't keyed.
+  notificationTexts: Partial<Record<TriggerKind, string>> | null;
   prevRingStatus: RingStatus | null;
   // Most recent measurement *before* this one — used for sharp-change detection.
   prevTemperatureC: number | null;
@@ -68,9 +71,16 @@ function inQuietHours(now: Date, q: QuietHours): boolean {
     : m >= q.startMin || m <= q.endMin;
 }
 
-function copy(kind: TriggerKind, plantName: string, thresholds: CareThresholds): { title: string; body: string } {
+function copy(
+  kind: TriggerKind,
+  plantName: string,
+  thresholds: CareThresholds,
+  overrides: PlantCtx['notificationTexts'],
+): { title: string; body: string } {
   // Per design doc: plant name in title, numbers + action in body, ≤40/≤100 chars, ровный тон.
   const title = plantName.slice(0, 40);
+  const override = overrides?.[kind];
+  if (override) return { title, body: override };
   switch (kind) {
     case 'soil_orange':
       return { title, body: 'Почва подсыхает. Полейте 150–200 мл тёплой отстоянной воды.' };
@@ -198,7 +208,7 @@ export async function evaluatePushTriggers(args: {
 
   for (const kind of triggers) {
     const reason = await shouldSuppress(plant, kind, now, quietHours);
-    const { title, body } = copy(kind, plant.name, plant.thresholds);
+    const { title, body } = copy(kind, plant.name, plant.thresholds, plant.notificationTexts);
 
     if (reason) {
       await prisma.notificationLog.create({

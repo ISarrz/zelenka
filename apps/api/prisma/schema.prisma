@@ -102,6 +102,11 @@ model PlantSpecies {
   family          String?
   defaultImageUrl String?
   thresholds      Json     // see CareThresholds in src/lib/thresholds.ts
+  // Optional per-species overrides for push texts (kind -> body string).
+  // Falls back to defaults in rules.ts when null or when a kind isn't keyed.
+  // Derived from Perenual watering frequency at species creation; can be
+  // overwritten by hand for tonality differences (cactus vs ficus).
+  notificationTexts Json?
   rawDetails      Json?    // Perenual raw_details_v1_json snapshot — for debugging
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

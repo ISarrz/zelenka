@@ -12,7 +12,7 @@ import {
   localPhotoExists,
   localPhotoPath,
 } from '../lib/species_photo.js';
-import { GENERIC_THRESHOLDS, thresholdsFromPerenual } from '../lib/thresholds.js';
+import { GENERIC_THRESHOLDS, notificationTextsFromPerenual, thresholdsFromPerenual } from '../lib/thresholds.js';
 
 // 3 identifications per rolling 7d, per the design doc.
 const ID_LIMIT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -95,6 +95,7 @@ export async function plantRoutes(app: FastifyInstance): Promise<void> {
           details: hit.details,
         })
       : GENERIC_THRESHOLDS;
+    const notifTexts = hit ? notificationTextsFromPerenual({ watering: hit.watering }) : null;
 
     const created = await prisma.plantSpecies.create({
       data: {
@@ -104,6 +105,7 @@ export async function plantRoutes(app: FastifyInstance): Promise<void> {
         family: hit?.family ?? null,
         defaultImageUrl: null,
         thresholds: thresholds as unknown as Prisma.InputJsonValue,
+        notificationTexts: (notifTexts ?? null) as unknown as Prisma.InputJsonValue,
         rawDetails: (hit?.details ?? null) as Prisma.InputJsonValue,
       },
     });

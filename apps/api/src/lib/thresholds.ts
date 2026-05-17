@@ -67,3 +67,36 @@ export function thresholdsFromPerenual(row: {
 
   return t;
 }
+
+// Per-species push text overrides — currently keyed only by watering
+// frequency, since that's the parameter where one-size-fits-all texts feel
+// off the most (a cactus owner being told "Полейте 200 мл" is comedy).
+// Returns a map from TriggerKind -> body text, or null to fall back to the
+// rules.ts defaults.
+export type NotificationTexts = Partial<Record<string, string>>;
+
+export function notificationTextsFromPerenual(row: {
+  watering?: string | null;
+}): NotificationTexts | null {
+  const w = row.watering?.toLowerCase();
+  switch (w) {
+    case 'frequent':
+      return {
+        soil_orange: 'Почва подсыхает. Полейте 200–300 мл тёплой воды.',
+        soil_red:    'Почва сухая. Полейте 250–300 мл воды как можно скорее.',
+      };
+    case 'minimum':
+      return {
+        soil_orange: 'Почва подсыхает. Полейте 80–120 мл и дайте земле просохнуть.',
+        soil_red:    'Почва пересохла. Полейте 100–150 мл аккуратно.',
+      };
+    case 'none':
+      return {
+        soil_orange: 'Почва подсыхает. Полейте 50–80 мл — этому виду много не нужно.',
+        soil_red:    'Почва пересохла. Полейте 80–120 мл — лучше сухо, чем перелив.',
+      };
+    case 'average':
+    default:
+      return null; // generic defaults are fine
+  }
+}

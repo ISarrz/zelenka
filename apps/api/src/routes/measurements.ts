@@ -169,6 +169,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
           userId: plant.userId,
           name: plant.name,
           thresholds,
+          notificationTexts: (plant.species?.notificationTexts as Record<string, string> | null) ?? null,
           prevRingStatus: (plant.lastRingStatus as RingStatus | null) ?? null,
           prevTemperatureC: prevMeasurement?.temperatureC ?? null,
           prevMeasuredAt: prevMeasurement?.measuredAt ?? null,
