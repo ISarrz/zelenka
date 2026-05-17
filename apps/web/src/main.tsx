@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthPage } from './pages/Auth';
 import { AuthConsumePage } from './pages/AuthConsume';
 import { DeviceManagePage } from './pages/DeviceManage';
+import { FeedPage } from './pages/Feed';
 import { HomePage } from './pages/Home';
 import { IdentifyPage } from './pages/Identify';
 import { MetricDetailPage } from './pages/MetricDetail';
@@ -16,6 +17,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/feed" element={<FeedPage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/auth/consume" element={<AuthConsumePage />} />
         <Route path="/devices/:deviceId/identify" element={<IdentifyPage />} />

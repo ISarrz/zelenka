@@ -12,6 +12,7 @@ import {
   type Verdict,
 } from '../api';
 import { BatteryIndicator, batteryLabel } from '../components/BatteryIndicator';
+import { BottomNav } from '../components/BottomNav';
 import {
   isPushSupported,
   isStandalonePWA,
@@ -121,7 +122,7 @@ export function HomePage() {
     ?? (plant ? 'общий профиль' : null);
 
   return (
-    <main className="relative min-h-full flex flex-col items-center justify-center p-6 gap-6">
+    <main className="relative min-h-full flex flex-col items-center justify-center p-6 pb-20 gap-6">
       <div className="absolute top-3 right-3 flex items-center gap-2">
         {battery && (
           <button
@@ -201,6 +202,7 @@ export function HomePage() {
           }}
         />
       )}
+      <BottomNav active="plant" />
     </main>
   );
 }

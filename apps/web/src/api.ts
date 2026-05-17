@@ -69,6 +69,18 @@ export interface Measurement {
   batteryRaw: number | null;
 }
 
+export interface FeedItem {
+  id: string;
+  source: 'care' | 'push';
+  kind: string;
+  occurredAt: string;
+  plantId: string;
+  plantName: string;
+  deviceId: string | null;
+  body: string | null;
+  careSource: 'manual' | 'auto' | null;
+}
+
 export type BatteryEstimate = 'full' | 'mid' | 'low' | 'critical';
 
 export interface BatteryStatus {
@@ -140,6 +152,7 @@ export const api = {
     request<{ version: string; url: string; sha256: string; size: number }>(
       '/firmware/manifest.json',
     ),
+  feed: () => request<{ items: FeedItem[] }>('/feed'),
   identify: (image: File) => {
     const fd = new FormData();
     fd.append('image', image);
