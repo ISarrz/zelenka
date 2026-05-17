@@ -6,6 +6,7 @@ import { AuthConsumePage } from './pages/AuthConsume';
 import { DeviceManagePage } from './pages/DeviceManage';
 import { DeviceSetupPage } from './pages/DeviceSetup';
 import { FeedPage } from './pages/Feed';
+import { FirmwareUpdatePage } from './pages/FirmwareUpdate';
 import { HomePage } from './pages/Home';
 import { IdentifyPage } from './pages/Identify';
 import { MetricDetailPage } from './pages/MetricDetail';
@@ -24,6 +25,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/devices/:deviceId/identify" element={<IdentifyPage />} />
         <Route path="/devices/:id/manage" element={<DeviceManagePage />} />
         <Route path="/devices/:id/setup" element={<DeviceSetupPage />} />
+        <Route path="/devices/:id/firmware" element={<FirmwareUpdatePage />} />
         <Route path="/devices/:id/p/:metric" element={<MetricDetailPage />} />
         <Route path="/devices/:id" element={<PlantCardPage />} />
         <Route path="/settings" element={<SettingsPage />} />

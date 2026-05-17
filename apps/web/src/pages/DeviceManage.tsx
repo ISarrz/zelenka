@@ -194,18 +194,25 @@ export function DeviceManagePage() {
       )}
 
       {info.device.firmwareVersion && (
-        <Row
-          icon={<span className="text-xl text-neutral-500">⚙</span>}
-          title="Прошивка"
-          subtitle={
-            fwUpToDate
-              ? `${info.device.firmwareVersion} — актуальная версия`
-              : fwUpdateAvailable
-                ? `${info.device.firmwareVersion} — доступна ${latestFw}`
-                : info.device.firmwareVersion
-          }
-          trailing={fwUpToDate ? <span className="text-status-ok text-lg">✓</span> : null}
-        />
+        <button
+          onClick={() => navigate(`/devices/${info.device.id}/firmware`)}
+          className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-neutral-50 dark:hover:bg-neutral-900"
+        >
+          <span className="text-xl text-neutral-500 flex-shrink-0">⚙</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm">Прошивка</div>
+            <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
+              {fwUpToDate
+                ? `${info.device.firmwareVersion} — актуальная версия`
+                : fwUpdateAvailable
+                  ? `${info.device.firmwareVersion} — доступна ${latestFw}`
+                  : info.device.firmwareVersion}
+            </div>
+          </div>
+          {fwUpToDate
+            ? <span className="text-status-ok text-lg">✓</span>
+            : <span className="text-neutral-400">›</span>}
+        </button>
       )}
 
       {/* Подключение */}

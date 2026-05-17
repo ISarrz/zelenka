@@ -159,7 +159,7 @@ export const api = {
   replaceDevice: (deviceId: string) =>
     request<{ device: Device }>(`/devices/${deviceId}/replace`, { method: 'POST' }),
   firmwareManifest: () =>
-    request<{ version: string; url: string; sha256: string; size: number }>(
+    request<{ version: string; url: string; sha256: string; size: number; notes: string | null }>(
       '/firmware/manifest.json',
     ),
   feed: () => request<{ items: FeedItem[] }>('/feed'),

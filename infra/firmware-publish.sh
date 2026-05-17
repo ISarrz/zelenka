@@ -36,12 +36,23 @@ cp "$BUILD/zelenka_firmware.bin" "$DEST/$ART"
 SHA=$(sha256sum "$DEST/$ART" | awk '{print $1}')
 SIZE=$(stat -c %s "$DEST/$ART")
 
+# Optional human-readable notes. If `$DEST/notes-<VERSION>.txt` exists, its
+# content gets JSON-escaped and dropped into manifest.notes — the PWA renders
+# it on the firmware-update screen as "Что нового".
+NOTES_FILE="$DEST/notes-$VERSION.txt"
+if [ -f "$NOTES_FILE" ]; then
+  NOTES=$(jq -Rs . < "$NOTES_FILE")
+else
+  NOTES="null"
+fi
+
 cat > "$DEST/manifest.json" <<EOF
 {
   "version": "$VERSION",
   "url": "/api/firmware/$ART",
   "sha256": "$SHA",
-  "size": $SIZE
+  "size": $SIZE,
+  "notes": $NOTES
 }
 EOF
 
