@@ -176,6 +176,13 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         )
       : null;
 
+    // Shape species: drop the heavy `rawDetails` blob from the wire (latest is
+    // polled every 10s on home), but pull out human-facing fields out of it.
+    const slimmedPlant = device.plant ? {
+      ...device.plant,
+      species: device.plant.species ? speciesForWire(device.plant.species) : null,
+    } : null;
+
     return {
       device: {
         id: device.id,
@@ -184,7 +191,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         wifiRssi: device.wifiRssi,
         lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
       },
-      plant: device.plant,
+      plant: slimmedPlant,
       measurement: latest,
       verdict,
       thresholds,
@@ -197,4 +204,32 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         : null,
     };
   });
+}
+
+// Slim a PlantSpecies row for the API wire format. Pulls description + family
+// out of the raw Perenual blob and drops the blob itself.
+function speciesForWire(species: {
+  id: string;
+  scientificName: string;
+  commonNameRu: string | null;
+  commonNameEn: string | null;
+  defaultImageUrl: string | null;
+  family: string | null;
+  thresholds: unknown;
+  rawDetails: unknown;
+}) {
+  const raw = (species.rawDetails as Record<string, unknown> | null) ?? null;
+  const description = typeof raw?.description === 'string' && raw.description.trim().length > 0
+    ? raw.description as string
+    : null;
+  return {
+    id: species.id,
+    scientificName: species.scientificName,
+    commonNameRu: species.commonNameRu,
+    commonNameEn: species.commonNameEn,
+    defaultImageUrl: species.defaultImageUrl,
+    family: species.family,
+    description,
+    thresholds: species.thresholds,
+  };
 }

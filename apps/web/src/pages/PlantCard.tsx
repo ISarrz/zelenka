@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import { api, type CareEvent, type Measurement, type Plant } from '../api';
+import { SpeciesCare } from '../components/SpeciesCare';
 
 type Range = 7 | 30;
 
@@ -101,6 +102,32 @@ export function PlantCardPage() {
           )}
         </div>
       </header>
+
+      {device.plant?.species && (
+        <section className="space-y-4">
+          <SpeciesCare thresholds={thresholds} />
+          {device.plant.species.description && (
+            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4">
+              <div className="text-[11px] font-medium tracking-wider uppercase text-neutral-400 dark:text-neutral-500 mb-2">
+                О растении
+              </div>
+              <p className="text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
+                {device.plant.species.description}
+              </p>
+              {device.plant.species.family && (
+                <p className="text-xs text-neutral-400 mt-2">
+                  Семейство: <span className="italic">{device.plant.species.family}</span>
+                </p>
+              )}
+            </div>
+          )}
+          {!device.plant.species.description && device.plant.species.family && (
+            <div className="text-xs text-neutral-400">
+              Семейство: <span className="italic">{device.plant.species.family}</span>
+            </div>
+          )}
+        </section>
+      )}
 
       <RangeToggle range={range} onChange={setRange} />
 

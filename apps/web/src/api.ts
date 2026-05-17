@@ -37,6 +37,10 @@ export interface PlantSpecies {
   commonNameRu: string | null;
   commonNameEn: string | null;
   defaultImageUrl: string | null;
+  family: string | null;
+  description: string | null;
+  // CareThresholds blob; shape varies, accessed loosely.
+  thresholds?: Record<string, Record<string, number> | undefined> | null;
 }
 
 export interface Plant {
