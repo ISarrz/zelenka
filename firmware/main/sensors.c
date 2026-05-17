@@ -189,7 +189,7 @@ static esp_err_t bh1750_read(float *lux) {
 // ---- Soil ADC -------------------------------------------------------------
 
 #define SOIL_ADC_UNIT     ADC_UNIT_1
-#define SOIL_ADC_CHANNEL  ADC_CHANNEL_4   // GPIO4 on ESP32-C3
+#define SOIL_ADC_CHANNEL  ADC_CHANNEL_1   // GPIO1 on ESP32-C3
 
 static adc_oneshot_unit_handle_t s_adc;
 static bool s_soil_ok = false;

@@ -16,7 +16,7 @@ Sprint 2.
 | ------------------- | ---- | ------------------------------ |
 | I2C SDA             | 8    | BME280 + BH1750 (shared bus)   |
 | I2C SCL             | 9    | BME280 + BH1750 (shared bus)   |
-| Soil moisture (ADC) | 4    | ADC1_CH4, atten 12 dB          |
+| Soil moisture (ADC) | 1    | ADC1_CH1, atten 12 dB          |
 | LED R               | 5    | common-cathode RGB             |
 | LED G               | 6    | common-cathode RGB             |
 | LED B               | 7    | common-cathode RGB             |
