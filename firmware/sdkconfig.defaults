@@ -17,7 +17,7 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 # Project version goes into the OTA app descriptor. CI/release scripts may
 # override this; default uses the value committed here.
 CONFIG_APP_PROJECT_VER_FROM_CONFIG=y
-CONFIG_APP_PROJECT_VER="0.1.10"
+CONFIG_APP_PROJECT_VER="0.1.11"
 
 # We have one task per phase, no SMP; keep main task stack roomy enough for HTTP.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192

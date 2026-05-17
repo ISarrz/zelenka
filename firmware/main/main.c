@@ -191,12 +191,20 @@ void app_main(void) {
     // save must NOT clear NVS, or we'd never escape provisioning.
     esp_reset_reason_t reason = esp_reset_reason();
     if (reason == ESP_RST_POWERON) {
+        // TTP223 self-calibration: the IC samples whatever capacitance is on
+        // the pad for ~1.5 s after power-up and bakes it into its baseline.
+        // If the user is touching during this window the IC inverts — we'd
+        // never see a real press. So we keep the LED neutral WHITE for the
+        // cal window, then flip to RED to invite the gesture.
         zelenka_led_set(ZELENKA_LED_BOOT);
+        vTaskDelay(pdMS_TO_TICKS(TTP223_CAL_MS));
+        zelenka_led_set(ZELENKA_LED_ERROR); // red = "press touch now to factory-reset"
         if (touch_was_held_for_factory_reset()) {
             ESP_LOGW(TAG, "factory reset: wiping NVS");
             zelenka_cfg_wipe();
             esp_restart();
         }
+        zelenka_led_set(ZELENKA_LED_BOOT);
         // Fresh power cycle: re-run the smoke-test burst so the user can plug
         // the sensor back in and immediately see updated numbers in the PWA.
         did_initial_burst = false;
