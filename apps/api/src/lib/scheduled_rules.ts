@@ -5,18 +5,21 @@
 // does, so cooldown / daily-cap checks remain consistent across both paths.
 
 import { prisma } from '../db.js';
+import { rawToVoltage, voltageToEstimate } from './battery.js';
 import { sendPushToUser } from './push.js';
 import type { CareThresholds } from './thresholds.js';
 import { GENERIC_THRESHOLDS } from './thresholds.js';
 import { localDateKey, minutesOfDayInTz } from './tz.js';
 
 const COOLDOWN_24H = 24 * 60 * 60 * 1000;
+const COOLDOWN_7D = 7 * 24 * 60 * 60 * 1000;
 const SENSOR_SILENT_HOURS = 24;
 const LIGHT_LOW_DAYS = 3;
 const HUMID_LOW_DAYS = 5;
 const ONBOARDING_HOURS = 48;
+const SAMPLE_INTERVAL_SEC = 600;
 
-function copyFor(kind: string, plantName: string): { title: string; body: string } {
+function copyFor(kind: string, plantName: string, hint?: string): { title: string; body: string } {
   const title = plantName.slice(0, 40);
   switch (kind) {
     case 'light_low':
@@ -29,6 +32,8 @@ function copyFor(kind: string, plantName: string): { title: string; body: string
       return { title, body: 'Место подходит — за двое суток все показатели в норме.' };
     case 'onboarding_place_alert':
       return { title, body: 'Место не очень — за двое суток показатели за пределами нормы.' };
+    case 'battery_low_week':
+      return { title, body: hint ? `Зарядите датчик. ${hint}` : 'Зарядите датчик. Низкий заряд.' };
   }
   return { title, body: '' };
 }
@@ -45,8 +50,9 @@ async function fire(
   plantId: string,
   kind: string,
   plantName: string,
+  hint?: string,
 ): Promise<void> {
-  const { title, body } = copyFor(kind, plantName);
+  const { title, body } = copyFor(kind, plantName, hint);
   await sendPushToUser(userId, { title, body, url: '/', tag: `${plantId}:${kind}` })
     .catch(() => undefined);
   await prisma.notificationLog.create({
@@ -225,6 +231,38 @@ async function scanMorningDigests(now: Date): Promise<void> {
   }
 }
 
+// Weekly cadence — fires at most once every 7 days per plant. Per the
+// design doc "пуш = действие с числами": when the device has learned how
+// many cycles it gets per charge, the body carries an ETA; otherwise it
+// just says the battery is low.
+async function scanBatteryLow(plants: PlantSnap[]): Promise<void> {
+  for (const p of plants) {
+    if (!p.deviceId) continue;
+    if (await recentlySent(p.id, 'battery_low_week', COOLDOWN_7D)) continue;
+
+    const latest = await prisma.measurement.findFirst({
+      where: { deviceId: p.deviceId, batteryRaw: { not: null } },
+      orderBy: { measuredAt: 'desc' },
+      select: { batteryRaw: true },
+    });
+    const voltage = rawToVoltage(latest?.batteryRaw);
+    const estimate = voltageToEstimate(voltage);
+    if (estimate !== 'low' && estimate !== 'critical') continue;
+
+    const device = await prisma.device.findUnique({
+      where: { id: p.deviceId },
+      select: { cyclesSinceLastCharge: true, cyclesPerFullBattery: true },
+    });
+    let hint: string | undefined;
+    if (device?.cyclesPerFullBattery != null) {
+      const remaining = Math.max(0, device.cyclesPerFullBattery - device.cyclesSinceLastCharge);
+      const days = Math.round((remaining * SAMPLE_INTERVAL_SEC) / 86400);
+      if (days >= 0 && days < 60) hint = `Хватит ещё на ~${days} дн.`;
+    }
+    await fire(p.userId, p.id, 'battery_low_week', p.name, hint);
+  }
+}
+
 export async function scanScheduledTriggers(): Promise<void> {
   const now = new Date();
   const plants = await loadPlants();
@@ -232,5 +270,6 @@ export async function scanScheduledTriggers(): Promise<void> {
   await scanAirDry(plants);
   await scanSensorSilent(plants);
   await scanOnboarding(plants);
+  await scanBatteryLow(plants);
   await scanMorningDigests(now);
 }

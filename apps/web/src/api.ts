@@ -75,6 +75,10 @@ export interface BatteryStatus {
   raw: number;
   voltage: number;
   estimate: BatteryEstimate;
+  cyclesSinceLastCharge: number;
+  cyclesPerFullBattery: number | null;
+  daysUntilCritical: number | null;
+  lastChargeAt: string | null;
 }
 
 export type Severity = 'ok' | 'warn' | 'alert' | 'unknown';

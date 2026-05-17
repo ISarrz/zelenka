@@ -69,6 +69,14 @@ model Device {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
 
+  // Battery self-learning. cyclesSinceLastCharge counts wake-cycles since the
+  // last detected charge event (voltage jump ≥ 0.15 V). On charge,
+  // cyclesPerFullBattery gets a rolling-average update and the counter resets.
+  // Both null on a fresh device — UI shows "ETA appears after first charge".
+  cyclesSinceLastCharge Int       @default(0)
+  cyclesPerFullBattery  Int?
+  lastChargeAt          DateTime?
+
   measurements Measurement[]
   plant        Plant?
 

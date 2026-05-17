@@ -169,7 +169,13 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       measurement: latest,
       verdict,
       thresholds,
-      battery: latest ? buildBatteryStatus(latest.batteryRaw) : null,
+      battery: latest
+        ? buildBatteryStatus(latest.batteryRaw, {
+            cyclesSinceLastCharge: device.cyclesSinceLastCharge,
+            cyclesPerFullBattery: device.cyclesPerFullBattery,
+            lastChargeAt: device.lastChargeAt,
+          })
+        : null,
     };
   });
 }

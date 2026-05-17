@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireDevice } from '../lib/auth.js';
+import { rawToVoltage, updateBatteryCounters } from '../lib/battery.js';
 import { detectAutoEvents } from '../lib/care_events.js';
 import { evaluatePushTriggers } from '../lib/rules.js';
 import type { CareThresholds } from '../lib/thresholds.js';
@@ -47,6 +48,20 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
     }
     const now = new Date();
 
+    // Compute battery counter delta BEFORE inserting — we need to know the
+    // prior-recorded voltage, which would otherwise include the new samples
+    // we're about to write.
+    const samplesWithBattery = samples.filter((s) => s.batteryRaw != null);
+    let priorBatteryVoltage: number | null = null;
+    if (samplesWithBattery.length > 0) {
+      const lastBattery = await prisma.measurement.findFirst({
+        where: { deviceId: req.deviceId!, batteryRaw: { not: null } },
+        orderBy: { measuredAt: 'desc' },
+        select: { batteryRaw: true },
+      });
+      priorBatteryVoltage = rawToVoltage(lastBattery?.batteryRaw);
+    }
+
     await prisma.measurement.createMany({
       data: samples.map((s) => ({
         deviceId: req.deviceId!,
@@ -60,6 +75,29 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
         batteryRaw: s.batteryRaw ?? null,
       })),
     });
+
+    if (samplesWithBattery.length > 0) {
+      const dev = await prisma.device.findUnique({
+        where: { id: req.deviceId! },
+        select: { cyclesSinceLastCharge: true, cyclesPerFullBattery: true },
+      });
+      if (dev) {
+        const upd = await updateBatteryCounters({
+          deviceId: req.deviceId!,
+          device: dev,
+          priorVoltage: priorBatteryVoltage,
+          freshBatteryRaws: samplesWithBattery.map((s) => s.batteryRaw),
+        });
+        await prisma.device.update({
+          where: { id: req.deviceId! },
+          data: {
+            cyclesSinceLastCharge: upd.newCounter,
+            cyclesPerFullBattery: upd.newPerFull,
+            ...(upd.chargeDetected ? { lastChargeAt: now } : {}),
+          },
+        });
+      }
+    }
 
     // Rule engine — evaluate only against the most recent sample in the
     // batch (the older ones are stale by definition).
