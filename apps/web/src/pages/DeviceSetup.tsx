@@ -114,6 +114,20 @@ export function DeviceSetupPage() {
             <div className="text-[11px] uppercase tracking-wider text-neutral-400 mb-1">Токен</div>
             <code className="select-all break-all text-xs">{device.deviceToken}</code>
           </div>
+
+          <a
+            href="http://192.168.4.1"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="block w-full py-3 rounded-lg bg-status-ok text-white text-sm font-medium text-center"
+          >
+            Открыть форму подключения
+          </a>
+          <p className="text-[11px] text-neutral-400 text-center leading-relaxed -mt-2">
+            Кнопка работает только когда телефон уже подключён к Wi-Fi «{ssid}».
+            Если форма не открылась автоматически — это альтернативный путь.
+          </p>
+
           <div className="flex items-center gap-2 text-xs text-neutral-400">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-neutral-400 animate-pulse" />
             Ожидаем первый замер от датчика
