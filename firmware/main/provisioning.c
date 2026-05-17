@@ -88,14 +88,36 @@ static const char FORM_HTML[] =
     "<form method='POST' action='/save'>"
     "<label>Имя сети</label><input name='ssid' required maxlength='32' autofocus>"
     "<label>Пароль</label><input name='pass' type='password' maxlength='63'>"
-    "<label>Токен растения</label><input name='token' required maxlength='63'>"
+    "<label>Токен растения</label><input name='token' id='token' required maxlength='63'>"
     "<button type='submit'>Сохранить</button>"
-    "</form></body></html>";
+    "</form>"
+    // Auto-fill the token from ?token=... in the URL — the PWA deep-links here
+    // with the token already attached, so the user doesn't have to copy/paste.
+    "<script>"
+    "var t=new URLSearchParams(location.search).get('token');"
+    "if(t){document.getElementById('token').value=t;}"
+    "</script>"
+    "</body></html>";
 
 static const char DONE_HTML[] =
     "<!doctype html><html lang='ru'><head><meta charset='utf-8'><title>Готово</title>"
-    "<style>body{font-family:system-ui;padding:24px;color:#111;text-align:center}</style></head>"
-    "<body><h1>Сохранено</h1><p>Датчик перезагружается и подключается к Wi-Fi.</p></body></html>";
+    "<style>"
+    "body{font-family:system-ui;padding:24px;color:#111;max-width:480px;margin:0 auto}"
+    "h1{font-size:1.4rem;margin:0 0 8px;text-align:center}"
+    ".lead{color:#666;text-align:center;margin:0 0 22px}"
+    "ol{padding-left:22px;line-height:1.55;color:#333}"
+    "li{margin:0 0 10px}"
+    "li strong{color:#111}"
+    ".dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:6px;vertical-align:middle}"
+    "</style></head>"
+    "<body>"
+    "<h1>Сохранено</h1>"
+    "<p class='lead'>Датчик уходит из этой сети и подключается к вашему Wi-Fi.</p>"
+    "<ol>"
+    "<li><strong>Переключите Wi-Fi на телефоне обратно</strong> на домашний — сеть «Zelenka-…» сейчас пропадёт.</li>"
+    "<li>Откройте вкладку приложения Zelenka — экран подключения сам обновится, когда датчик пришлёт первый замер (около минуты).</li>"
+    "</ol>"
+    "</body></html>";
 
 static esp_err_t form_get(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html; charset=utf-8");

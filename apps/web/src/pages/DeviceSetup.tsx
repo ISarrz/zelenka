@@ -121,7 +121,7 @@ export function DeviceSetupPage() {
           </div>
 
           <a
-            href="http://192.168.4.1"
+            href={`http://192.168.4.1/?token=${encodeURIComponent(device.deviceToken)}`}
             target="_blank"
             rel="noreferrer noopener"
             className="block w-full py-3 rounded-lg bg-status-ok text-white text-sm font-medium text-center"
