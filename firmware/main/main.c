@@ -46,6 +46,26 @@ RTC_DATA_ATTR static int64_t          batch_epochs[CONFIG_ZELENKA_BATCH_SIZE];
 RTC_DATA_ATTR static int              batch_count = 0;
 RTC_DATA_ATTR static bool             time_synced = false;
 RTC_DATA_ATTR static bool             did_initial_burst = false;
+// Wall-clock at which the device first completed provisioning and ran its
+// burst. Used to keep the device in a "rapid setup" cadence for the first
+// hour so the user can see live updates while they place the sensor.
+RTC_DATA_ATTR static int64_t          provisioned_at_epoch = 0;
+
+// First hour after provisioning: take a sample every 10 s and POST every
+// minute (batch of 6). After that, drop back to the production cadence
+// (sample every CONFIG_ZELENKA_SAMPLE_INTERVAL_SEC, batch of 6 → ~1 h).
+#define RAPID_SETUP_SEC          3600
+#define RAPID_SAMPLE_INTERVAL_SEC 10
+
+static bool in_rapid_setup(void) {
+    if (!time_synced || provisioned_at_epoch == 0) return false;
+    int64_t now = (int64_t)time(NULL);
+    return (now - provisioned_at_epoch) < RAPID_SETUP_SEC;
+}
+
+static int current_sample_interval(void) {
+    return in_rapid_setup() ? RAPID_SAMPLE_INTERVAL_SEC : CONFIG_ZELENKA_SAMPLE_INTERVAL_SEC;
+}
 
 // On first power-on after provisioning we run a fast smoke test: BURST_SAMPLES
 // samples spaced BURST_INTERVAL_MS apart, then push them all at once. The user
@@ -226,6 +246,17 @@ void app_main(void) {
     sensors_init();
     offline_buffer_init();
 
+    // Stamp the moment we *first* have a usable wall clock — that's the
+    // start of the rapid-setup window. For fresh devices this lines up with
+    // first NTP sync right after provisioning; for OTA-upgraded devices
+    // (whose burst already happened on older firmware) it lines up with the
+    // first wake under the new code, giving them a one-time hour of fast
+    // updates after the upgrade. Harmless drain compared to a fresh provision.
+    if (time_synced && provisioned_at_epoch == 0) {
+        provisioned_at_epoch = (int64_t)time(NULL);
+        ESP_LOGI(TAG, "rapid-setup window begins (1 hour from now)");
+    }
+
     if (!did_initial_burst) {
         // ---- Initial smoke-test burst (~70s after power-on) -----------------
         // Stays awake, Wi-Fi up, six samples 10s apart, push the batch, then
@@ -339,17 +370,16 @@ void app_main(void) {
         }
     }
 
-    // Align next wake to the next multiple of SAMPLE_INTERVAL_SEC since
-    // epoch — so samples land at :00, :10, :20, … of every hour rather than
-    // at whatever-offset the device happened to be provisioned at. Falls
-    // back to fixed interval until time is synced.
-    int sleep_sec = CONFIG_ZELENKA_SAMPLE_INTERVAL_SEC;
+    // Align next wake to the next multiple of the active sample interval —
+    // 10 s during the post-provisioning rapid window, otherwise the
+    // production cadence. Falls back to fixed interval until time is synced.
+    int interval = current_sample_interval();
+    int sleep_sec = interval;
     if (time_synced) {
         int64_t now = (int64_t)time(NULL);
-        int64_t next = ((now / CONFIG_ZELENKA_SAMPLE_INTERVAL_SEC) + 1)
-                       * CONFIG_ZELENKA_SAMPLE_INTERVAL_SEC;
+        int64_t next = ((now / interval) + 1) * interval;
         int64_t delta = next - now;
-        if (delta < 5) delta += CONFIG_ZELENKA_SAMPLE_INTERVAL_SEC; // never sleep <5s
+        if (delta < 5) delta += interval; // never sleep <5s
         sleep_sec = (int)delta;
     }
     enter_deep_sleep(sleep_sec);
