@@ -30,3 +30,9 @@ infra/firmware-releases/manifest.json
 # Resend API key
 resend_key.txt
 resend_key*.txt
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Claude Code local workspace
+.claude/

@@ -1,4 +1,6 @@
 import { useNavigate } from 'react-router-dom';
+import { Icon } from './Icon';
+import { PlantArt } from './PlantArt';
 
 // Two-tab bottom strip — Растение / Лента. Sticky at the bottom; pages
 // give it the visual real estate by adding 64px of bottom padding.
@@ -16,13 +18,13 @@ export function BottomNav({ active }: Props) {
       <Tab
         active={active === 'plant'}
         label="Растение"
-        symbol="🌱"
+        icon="plant"
         onClick={() => navigate('/')}
       />
       <Tab
         active={active === 'feed'}
         label="Лента"
-        symbol="≡"
+        icon="list"
         onClick={() => navigate('/feed')}
       />
     </nav>
@@ -30,9 +32,12 @@ export function BottomNav({ active }: Props) {
 }
 
 function Tab({
-  active, label, symbol, onClick,
+  active, label, icon, onClick,
 }: {
-  active: boolean; label: string; symbol: string; onClick: () => void;
+  active: boolean;
+  label: string;
+  icon: 'plant' | 'list';
+  onClick: () => void;
 }) {
   return (
     <button
@@ -41,7 +46,11 @@ function Tab({
         active ? 'text-neutral-900 dark:text-neutral-100' : 'text-neutral-400 dark:text-neutral-500'
       }`}
     >
-      <span className="text-lg leading-none">{symbol}</span>
+      {icon === 'plant' ? (
+        <PlantArt className="w-[19px] h-auto" strokeWidth={18} />
+      ) : (
+        <Icon name={icon} size={19} />
+      )}
       <span className={`text-[11px] ${active ? 'font-medium' : ''}`}>{label}</span>
     </button>
   );

@@ -9,7 +9,18 @@ export interface CareThresholds {
   humidityPct?:  { okMin: number; okMax: number; warnMin: number; warnMax: number };
   lux?:          { okMin: number; okMax: number; warnMin: number; warnMax: number };
   soilMoistureRaw?: { wet: number; dry: number; criticallyDry: number };
+  // Hours of bright light (lux ≥ BRIGHT_LUX_THRESHOLD) the plant needs per
+  // day. Driven by Perenual's xSunlightDuration.min; falls back to a generic
+  // indoor default. Verdict uses this in preference to the instant `lux`
+  // band so plants aren't flagged "темно" every night.
+  minSunHours?: number;
 }
+
+// Single bar above which a sample counts toward the day's bright-light hours.
+// 1000 lx ≈ a bright north-facing window on an overcast day, well below
+// direct-window readings (10–50 klx). Tuned to make "did the plant see
+// daylight today?" the question rather than "is it noon?".
+export const BRIGHT_LUX_THRESHOLD = 1000;
 
 // Sensible defaults applied when no per-species data is available. Tuned for
 // typical indoor plants; species-specific data overrides slot-by-slot.
@@ -18,6 +29,7 @@ export const GENERIC_THRESHOLDS: CareThresholds = {
   humidityPct:  { warnMin: 25, okMin: 35, okMax: 70, warnMax: 80 },
   lux:          { warnMin: 150, okMin: 400, okMax: 30000, warnMax: 60000 },
   soilMoistureRaw: { wet: 1300, dry: 2800, criticallyDry: 3300 },
+  minSunHours: 4,
 };
 
 // Build thresholds from a Perenual species row. Most fields are categorical
@@ -27,8 +39,14 @@ export function thresholdsFromPerenual(row: {
   watering?: string | null;
   sunlight?: string[] | null;
   details?: Record<string, unknown> | null;
+  minSunHours?: number | null;
 }): CareThresholds {
   const t: CareThresholds = JSON.parse(JSON.stringify(GENERIC_THRESHOLDS));
+
+  // Per-species sun-hour target overrides the generic 4h default.
+  if (row.minSunHours != null && row.minSunHours > 0 && row.minSunHours <= 24) {
+    t.minSunHours = row.minSunHours;
+  }
 
   // Watering → soil moisture comfort band.
   // "Frequent" plants want it wetter; "Minimum" plants tolerate dryness.

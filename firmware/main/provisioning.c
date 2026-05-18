@@ -74,14 +74,22 @@ static void dns_task(void *arg) {
 static const char FORM_HTML[] =
     "<!doctype html><html lang='ru'><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+    "<meta name='color-scheme' content='light dark'>"
     "<title>Zelenka — настройка</title>"
     "<style>"
+    ":root{color-scheme:light dark}"
     "body{font-family:system-ui,sans-serif;margin:0;padding:24px;background:#fafafa;color:#111}"
     "h1{font-size:1.4rem;margin:0 0 4px}"
     "p{color:#666;margin:0 0 18px;font-size:.9rem}"
     "label{display:block;font-size:.85rem;margin:14px 0 4px;color:#333}"
-    "input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:8px;font:inherit}"
-    "button{margin-top:20px;width:100%;padding:12px;background:#22c55e;color:#fff;border:0;border-radius:8px;font-weight:600;font-size:1rem}"
+    "input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:8px;font:inherit;background:#fff;color:#111}"
+    "button{margin-top:20px;width:100%;padding:12px;background:#639922;color:#fff;border:0;border-radius:8px;font-weight:600;font-size:1rem}"
+    "@media (prefers-color-scheme:dark){"
+    "body{background:#0a0a0a;color:#fafafa}"
+    "p{color:#a3a3a3}"
+    "label{color:#d4d4d4}"
+    "input{background:#171717;color:#fafafa;border-color:#404040}"
+    "}"
     "</style></head><body>"
     "<h1>Подключение Zelenka</h1>"
     "<p>Введите Wi-Fi сети (только 2.4 ГГц) и токен растения из приложения.</p>"
@@ -99,27 +107,56 @@ static const char FORM_HTML[] =
     "</script>"
     "</body></html>";
 
-static const char DONE_HTML[] =
-    "<!doctype html><html lang='ru'><head><meta charset='utf-8'><title>Готово</title>"
+// On submit we render a page that polls the public Zelenka API; the device's
+// AP is shutting down within a couple seconds, so as soon as the phone falls
+// back to its remembered home Wi-Fi the health probe succeeds and we redirect
+// straight into /claim?t=<token>. /claim is idempotent for the same user and
+// already routes to /devices/<id>/setup, which is the "Ждём датчик" screen.
+// `%s` slot is the URL-encoded device token, filled at request time.
+static const char DONE_HTML_TMPL[] =
+    "<!doctype html><html lang='ru'><head><meta charset='utf-8'>"
+    "<meta name='color-scheme' content='light dark'>"
+    "<title>Готово</title>"
     "<style>"
-    "body{font-family:system-ui;padding:24px;color:#111;max-width:480px;margin:0 auto}"
-    "h1{font-size:1.4rem;margin:0 0 8px;text-align:center}"
-    ".lead{color:#666;text-align:center;margin:0 0 22px}"
-    "ol{padding-left:22px;line-height:1.55;color:#333}"
-    "li{margin:0 0 10px}"
-    "li strong{color:#111}"
-    ".dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:6px;vertical-align:middle}"
+    ":root{color-scheme:light dark}"
+    "body{font-family:system-ui;padding:32px 24px;background:#fafafa;color:#111;max-width:420px;margin:0 auto;text-align:center}"
+    "h1{font-size:1.4rem;margin:0 0 12px}"
+    "p{color:#666;margin:0 0 22px;line-height:1.5;font-size:.95rem}"
+    ".spin{width:48px;height:48px;border:4px solid #eee;border-top-color:#639922;border-radius:50%%;margin:24px auto;animation:s 0.9s linear infinite}"
+    "@keyframes s{to{transform:rotate(360deg)}}"
+    "a.btn{display:inline-block;margin-top:8px;padding:12px 18px;background:#639922;color:#fff;border-radius:10px;font-weight:600;text-decoration:none;font-size:.95rem}"
+    "@media (prefers-color-scheme:dark){"
+    "body{background:#0a0a0a;color:#fafafa}"
+    "p{color:#a3a3a3}"
+    ".spin{border-color:#262626;border-top-color:#639922}"
+    "}"
     "</style></head>"
     "<body>"
     "<h1>Сохранено</h1>"
-    "<p class='lead'>Датчик уходит из этой сети и подключается к вашему Wi-Fi.</p>"
-    "<ol>"
-    "<li><strong>Переключите Wi-Fi на телефоне обратно</strong> на домашний — сеть «Zelenka-…» сейчас пропадёт.</li>"
-    "<li>Откройте вкладку приложения Zelenka — экран подключения сам обновится, когда датчик пришлёт первый замер (около минуты).</li>"
-    "</ol>"
+    "<div class='spin'></div>"
+    "<p>Переключите телефон обратно на ваш домашний Wi-Fi. Как только связь восстановится, мы сами откроем приложение.</p>"
+    "<a class='btn' id='manual' href='https://zelenka-api.ru/claim?t=%s&wait=1'>Открыть вручную</a>"
+    "<script>"
+    "(function(){"
+    "var url='https://zelenka-api.ru/claim?t=%s&wait=1';"
+    "function probe(){"
+    "fetch('https://zelenka-api.ru/api/healthz',{cache:'no-store'})"
+    ".then(function(r){if(r.ok){location.replace(url);}else{setTimeout(probe,1500);}})"
+    ".catch(function(){setTimeout(probe,1500);});"
+    "}"
+    "setTimeout(probe,2500);"
+    "})();"
+    "</script>"
     "</body></html>";
 
+// RFC 8908/8910 — modern OSes treat this as authoritative "this is a captive
+// network, the portal is at <URL>" without waiting for a probe to fail.
+static void set_captive_header(httpd_req_t *req) {
+    httpd_resp_set_hdr(req, "Captive-Portal", "http://192.168.4.1/");
+}
+
 static esp_err_t form_get(httpd_req_t *req) {
+    set_captive_header(req);
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     return httpd_resp_send(req, FORM_HTML, HTTPD_RESP_USE_STRLEN);
 }
@@ -175,8 +212,18 @@ static esp_err_t save_post(httpd_req_t *req) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "nvs write failed");
         return ESP_OK;
     }
+
+    // Render DONE_HTML_TMPL with the captured token spliced in twice (visible
+    // fallback link + JS redirect target). Token in our flow is hex from the
+    // QR claim, so no extra URL-encoding is necessary.
+    static char done_buf[2048];
+    int len = snprintf(done_buf, sizeof(done_buf), DONE_HTML_TMPL, token, token);
+    if (len < 0 || len >= (int)sizeof(done_buf)) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "done page too big");
+        return ESP_OK;
+    }
     httpd_resp_set_type(req, "text/html; charset=utf-8");
-    httpd_resp_send(req, DONE_HTML, HTTPD_RESP_USE_STRLEN);
+    httpd_resp_send(req, done_buf, len);
 
     ESP_LOGI(TAG, "provisioned ssid=%s token=<set>; restarting in 2s", ssid);
     vTaskDelay(pdMS_TO_TICKS(2000));
@@ -184,11 +231,17 @@ static esp_err_t save_post(httpd_req_t *req) {
     return ESP_OK;
 }
 
-// Catch-all: any other path (including iOS/Android captive-detection probes)
-// gets the form so the OS pops the "sign in to network" sheet.
+// Catch-all: every non-/ GET (Apple's /hotspot-detect.html, Android's
+// /generate_204, Windows' /ncsi.txt, Firefox's /canonical.html, …) gets a
+// 302 to /. Empirically this triggers the OS-level captive sheet faster
+// and more reliably than returning 200 + form HTML, which some probes
+// classified as "internet works" depending on body parsing.
 static esp_err_t catchall(httpd_req_t *req) {
+    set_captive_header(req);
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
     httpd_resp_set_type(req, "text/html; charset=utf-8");
-    return httpd_resp_send(req, FORM_HTML, HTTPD_RESP_USE_STRLEN);
+    return httpd_resp_send(req, NULL, 0);
 }
 
 static httpd_handle_t start_http(void) {
@@ -262,5 +315,21 @@ esp_err_t provisioning_run(void) {
     xTaskCreate(dns_task, "dns_hijack", 4096, NULL, 5, NULL);
     httpd_handle_t srv = start_http();
     ESP_LOGI(TAG, "HTTP server %s", srv ? "started" : "FAILED to start");
-    return ESP_OK;
+
+    // Hard cap on AP airtime: if the user doesn't submit the form inside
+    // PROVISIONING_TIMEOUT_MS, tear down and return. The caller deep-sleeps,
+    // and the device only comes back to provisioning on a 5-s touch hold.
+    // Successful POST /save calls esp_restart() — execution never reaches the
+    // line after this loop in that case.
+    const int step_ms = 1000;
+    int elapsed = 0;
+    while (elapsed < PROVISIONING_TIMEOUT_MS) {
+        vTaskDelay(pdMS_TO_TICKS(step_ms));
+        elapsed += step_ms;
+    }
+    ESP_LOGW(TAG, "provisioning idle timeout — leaving AP");
+    if (srv) httpd_stop(srv);
+    esp_wifi_stop();
+    esp_wifi_deinit();
+    return ESP_ERR_TIMEOUT;
 }

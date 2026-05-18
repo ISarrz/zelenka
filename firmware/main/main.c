@@ -67,6 +67,14 @@ static int current_sample_interval(void) {
     return in_rapid_setup() ? RAPID_SAMPLE_INTERVAL_SEC : CONFIG_ZELENKA_SAMPLE_INTERVAL_SEC;
 }
 
+// During the post-provisioning rapid window we POST every sample so the
+// calibration UI can read live values; outside the window we collect a
+// full batch and push once. Cost: a Wi-Fi reconnect per sample for one
+// hour — heavy but bounded.
+static int current_batch_target(void) {
+    return in_rapid_setup() ? 1 : CONFIG_ZELENKA_BATCH_SIZE;
+}
+
 // On first power-on after provisioning we run a fast smoke test: BURST_SAMPLES
 // samples spaced BURST_INTERVAL_MS apart, then push them all at once. The user
 // sees real numbers on the home screen within ~70s of plugging the sensor in
@@ -87,6 +95,18 @@ static void init_nvs(void) {
 static void enter_deep_sleep(int sec) {
     ESP_LOGI(TAG, "sleeping %d s (batch %d/%d)", sec, batch_count, CONFIG_ZELENKA_BATCH_SIZE);
     esp_sleep_enable_timer_wakeup((int64_t)sec * 1000000LL);
+    // Wake also on a touch press so the user can re-enter provisioning by
+    // holding the pad ~5 s. GPIO5 (TTP223 DO) goes HIGH on touch.
+    esp_deep_sleep_enable_gpio_wakeup(1ULL << TOUCH_GPIO, ESP_GPIO_WAKEUP_GPIO_HIGH);
+    esp_deep_sleep_start();
+}
+
+// Sleep indefinitely (no timer), waking only on a touch press. Used after
+// the provisioning AP times out — the device is otherwise useless until
+// the user re-arms it.
+static void enter_deep_sleep_touch_only(void) {
+    ESP_LOGI(TAG, "deep sleep, touch-only wake");
+    esp_deep_sleep_enable_gpio_wakeup(1ULL << TOUCH_GPIO, ESP_GPIO_WAKEUP_GPIO_HIGH);
     esp_deep_sleep_start();
 }
 
@@ -206,6 +226,24 @@ void app_main(void) {
     zelenka_led_init();
     touch_init();
 
+    // Warm touch-wake: device came out of deep sleep because the user is
+    // pressing the pad. Hold ≥5 s → wipe Wi-Fi config and reboot into the
+    // captive portal. Released early → fall through into the normal cycle
+    // so we don't lose the sample.
+    esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
+    if (wake == ESP_SLEEP_WAKEUP_GPIO) {
+        ESP_LOGW(TAG, "touch wake — checking 5 s hold");
+        zelenka_led_set(ZELENKA_LED_SENDING); // fast blink during hold check
+        if (touch_held_for(TOUCH_REPROV_MS)) {
+            ESP_LOGW(TAG, "touch re-provision: wiping config and rebooting");
+            zelenka_led_set(ZELENKA_LED_OK);
+            zelenka_cfg_wipe();
+            vTaskDelay(pdMS_TO_TICKS(200));
+            esp_restart();
+        }
+        zelenka_led_set(ZELENKA_LED_OFF);
+    }
+
     // Factory reset gesture — only on a real power-on. USB resets (DTR pulse
     // from the host while debugging) and software restarts after captive-portal
     // save must NOT clear NVS, or we'd never escape provisioning.
@@ -239,8 +277,11 @@ void app_main(void) {
         ESP_LOGI(TAG, "no provisioning — entering SoftAP captive portal");
         zelenka_led_set(ZELENKA_LED_WIFI);
         provisioning_run();
-        // provisioning_run() restarts on save; if we got here it didn't finish.
-        while (true) vTaskDelay(pdMS_TO_TICKS(60000));
+        // Reached only on PROVISIONING_TIMEOUT_MS expiry (success path calls
+        // esp_restart). Go dark and sleep until the user presses the pad —
+        // they re-arm provisioning with a 5-s touch hold.
+        zelenka_led_set(ZELENKA_LED_OFF);
+        enter_deep_sleep_touch_only();
     }
 
     sensors_init();
@@ -326,7 +367,7 @@ void app_main(void) {
                  r.has_bme280, r.has_bh1750, r.has_soil,
                  r.temperature_c, r.humidity_pct, r.lux, r.soil_moisture_raw);
 
-        if (batch_count >= CONFIG_ZELENKA_BATCH_SIZE) {
+        if (batch_count >= current_batch_target()) {
             zelenka_led_set(ZELENKA_LED_WIFI);
             if (wifi_connect_blocking(cfg.wifi_ssid, cfg.wifi_password) == ESP_OK) {
                 if (!time_synced) time_synced = sync_ntp_blocking();

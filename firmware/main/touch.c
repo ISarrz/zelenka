@@ -47,3 +47,20 @@ bool touch_was_held_for_factory_reset(void) {
     ESP_LOGW(TAG, "factory reset gesture held for %d ms", FACTORY_RESET_MS);
     return true;
 }
+
+bool touch_held_for(int hold_ms) {
+    // No calibration delay here — we're being called on a warm wake, the
+    // TTP223 has been powered for ages. Read once: pad must already be high.
+    if (gpio_get_level(TOUCH_GPIO) == 0) return false;
+
+    int64_t deadline = esp_timer_get_time() + (int64_t)hold_ms * 1000;
+    while (esp_timer_get_time() < deadline) {
+        if (gpio_get_level(TOUCH_GPIO) == 0) {
+            ESP_LOGI(TAG, "warm-hold released early");
+            return false;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    ESP_LOGW(TAG, "warm touch gesture held for %d ms", hold_ms);
+    return true;
+}

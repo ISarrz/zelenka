@@ -11,7 +11,13 @@ import {
   setSessionCookie,
 } from '../lib/sessions.js';
 
-const RequestBody = z.object({ email: z.string().email() });
+// `next` is an in-app path the consume page should redirect to after a
+// successful login. Restricted to relative paths starting with "/" so the
+// magic link can't be turned into an open-redirect.
+const RequestBody = z.object({
+  email: z.string().email(),
+  next: z.string().regex(/^\/[^\s]{0,200}$/).optional(),
+});
 const ConsumeBody = z.object({ token: z.string().min(8) });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
@@ -35,7 +41,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       data: { token, userId: user.id, expiresAt },
     });
 
-    const url = `${config.webBaseUrl}/auth/consume?token=${encodeURIComponent(token)}`;
+    const next = parsed.data.next ? `&next=${encodeURIComponent(parsed.data.next)}` : '';
+    const url = `${config.webBaseUrl}/auth/consume?token=${encodeURIComponent(token)}${next}`;
     await sendMagicLink(email, url);
 
     return { status: 'sent' };

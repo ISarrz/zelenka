@@ -65,9 +65,13 @@ model Device {
   id          String   @id @default(uuid())
   name        String
   deviceToken String   @unique
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Null = unclaimed. Devices are minted orphan at the factory (token printed
+  // on the QR sticker, same token baked into firmware NVS). The first
+  // successful POST /api/devices/claim binds the device to a user.
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
+  claimedAt   DateTime?
 
   // Battery self-learning. cyclesSinceLastCharge counts wake-cycles since the
   // last detected charge event (voltage jump ≥ 0.15 V). On charge,
@@ -76,6 +80,15 @@ model Device {
   cyclesSinceLastCharge Int       @default(0)
   cyclesPerFullBattery  Int?
   lastChargeAt          DateTime?
+
+  // Soil-moisture calibration: raw ADC reading in air ("dry" baseline) and
+  // in water ("wet" baseline). Set by the calibration step right after
+  // captive-portal setup. With both present we can render
+  // soilMoisturePct = clamp((dryRaw - raw) / (dryRaw - wetRaw), 0, 1) * 100.
+  // Either-or-none is allowed; UI falls back to raw when calibration is
+  // incomplete.
+  soilDryRaw  Int?
+  soilWetRaw  Int?
 
   // Last-known firmware version + Wi-Fi signal strength reported on the most
   // recent POST. Surfaced in the Управление датчиком screen.

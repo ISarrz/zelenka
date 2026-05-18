@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, type Device, type SettingsUser } from '../api';
-import { unsubscribeFromPush } from '../lib/push';
+import { isStandalonePWA, unsubscribeFromPush } from '../lib/push';
+import { InstallPrompt } from '../components/InstallPrompt';
 
 function statusDotClass(s: string | null | undefined): string {
   switch (s) {
@@ -20,6 +21,8 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [pushOn, setPushOn] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [installOpen, setInstallOpen] = useState(false);
+  const standalone = isStandalonePWA();
 
   useEffect(() => {
     api.meSettings()
@@ -154,6 +157,23 @@ export function SettingsPage() {
         )}
       </section>
 
+      <section className="space-y-2">
+        <h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Приложение</h2>
+        {standalone ? (
+          <p className="text-sm text-neutral-500">Уже установлено как PWA ✓</p>
+        ) : (
+          <button
+            onClick={() => setInstallOpen(true)}
+            className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 py-2 text-sm"
+          >
+            Установить на главный экран
+          </button>
+        )}
+        <p className="text-xs text-neutral-500">
+          Без установки push-уведомления не работают (iOS) или приходят редко (Android).
+        </p>
+      </section>
+
       <section>
         <button
           onClick={logout}
@@ -162,6 +182,8 @@ export function SettingsPage() {
       </section>
 
       {error && <p className="text-sm text-status-alert">{error}</p>}
+
+      {installOpen && <InstallPrompt onClose={() => setInstallOpen(false)} />}
     </main>
   );
 }

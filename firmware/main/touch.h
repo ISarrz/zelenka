@@ -18,9 +18,21 @@
 #define TOUCH_WINDOW_MS     3000
 #define FACTORY_RESET_MS    3000
 
+// Hold time for the warm "re-enter provisioning" gesture (user touches the
+// pad while the device is running normally — wakes from deep sleep via
+// GPIO and holds 5 s to wipe Wi-Fi config and drop back into the captive
+// portal). Longer than FACTORY_RESET_MS so an accidental brush during use
+// can't trigger it.
+#define TOUCH_REPROV_MS     5000
+
 void touch_init(void);
 
 // Wait for TTP223 to calibrate, then arm a press window. Returns true if the
 // user touched the pad within TOUCH_WINDOW_MS and held continuously for
 // FACTORY_RESET_MS — that's the factory-reset gesture.
 bool touch_was_held_for_factory_reset(void);
+
+// Returns true if the pad is currently pressed AND stays continuously
+// pressed for `hold_ms`. Polls every 50 ms. Caller is responsible for any
+// LED feedback during the hold.
+bool touch_held_for(int hold_ms);

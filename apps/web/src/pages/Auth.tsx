@@ -1,7 +1,15 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 
 export function AuthPage() {
+  const [params] = useSearchParams();
+  // Per /api/auth/magic-link/request schema, only relative paths are accepted
+  // on the server — but we still pre-filter here so an obviously bad value
+  // doesn't bother the request.
+  const rawNext = params.get('next');
+  const next = rawNext && rawNext.startsWith('/') ? rawNext : null;
+
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -12,7 +20,7 @@ export function AuthPage() {
     setError(null);
     setPending(true);
     try {
-      await api.requestMagicLink(email.trim());
+      await api.requestMagicLink(email.trim(), next ?? undefined);
       setSent(true);
     } catch (err) {
       setError((err as Error).message);
@@ -28,10 +36,6 @@ export function AuthPage() {
           <h1 className="text-2xl font-semibold">Письмо отправлено</h1>
           <p className="text-neutral-600 dark:text-neutral-400">
             Откройте ссылку из письма на <strong>{email}</strong>, чтобы войти.
-          </p>
-          <p className="text-sm text-neutral-500">
-            В dev-режиме ссылка пишется в лог API-контейнера —
-            посмотрите <code>docker logs api</code>.
           </p>
         </div>
       </main>

@@ -20,6 +20,26 @@ interface DeviceWithPlant {
   id: string;
   name: string;
   plant: Plant | null;
+  soilDryRaw: number | null;
+  soilWetRaw: number | null;
+}
+
+// Mirror of GENERIC_THRESHOLDS.soilMoistureRaw — used as fallback when the
+// user hasn't calibrated yet, so the chart shows % from day one.
+const GENERIC_SOIL_DRY = 2800;
+const GENERIC_SOIL_WET = 1300;
+
+function rawToSoilPct(
+  raw: number | null | undefined,
+  dry: number | null,
+  wet: number | null,
+): number | null {
+  if (raw == null) return null;
+  const d = dry ?? GENERIC_SOIL_DRY;
+  const w = wet ?? GENERIC_SOIL_WET;
+  if (d <= w) return null;
+  const pct = ((d - raw) / (d - w)) * 100;
+  return Math.max(0, Math.min(100, Math.round(pct * 10) / 10));
 }
 
 export function PlantCardPage() {
@@ -37,7 +57,13 @@ export function PlantCardPage() {
     const load = async () => {
       try {
         const latest = await api.latestMeasurement(id);
-        setDevice({ id: latest.device.id, name: latest.device.name, plant: latest.plant });
+        setDevice({
+          id: latest.device.id,
+          name: latest.device.name,
+          plant: latest.plant,
+          soilDryRaw: latest.device.soilDryRaw ?? null,
+          soilWetRaw: latest.device.soilWetRaw ?? null,
+        });
       } catch (err) {
         if ((err as { status?: number }).status === 401) navigate('/auth', { replace: true });
       }
@@ -77,8 +103,11 @@ export function PlantCardPage() {
     temperatureC: s.temperatureC,
     humidityPct: s.humidityPct,
     lux: s.lux,
-    soilMoistureRaw: s.soilMoistureRaw,
+    soilMoisturePct: rawToSoilPct(s.soilMoistureRaw, device.soilDryRaw, device.soilWetRaw),
   }));
+
+  // ok = 30–70 % comfortable for most houseplants. Warn-low <30, warn-high >85.
+  const soilPctBand = { okMin: 30, okMax: 70, warnMin: 15, warnMax: 90 };
 
   return (
     <main className="min-h-full p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
@@ -157,14 +186,12 @@ export function PlantCardPage() {
           events={events}
         />
         <Chart
-          label="Почва (raw)"
+          label="Влажность почвы, %"
           data={data}
-          dataKey="soilMoistureRaw"
-          // Soil's "ok" range is between wet and dry — inverted from other params.
-          band={thresholds?.soilMoistureRaw}
-          bandKeys={['wet', 'dry', null, 'criticallyDry']}
+          dataKey="soilMoisturePct"
+          band={soilPctBand}
+          bandKeys={['okMin', 'okMax', 'warnMin', 'warnMax']}
           events={events}
-          inverted
         />
       </section>
 
@@ -231,7 +258,7 @@ function RangeToggle({ range, onChange }: { range: Range; onChange: (r: Range) =
 interface ChartProps {
   label: string;
   data: { t: number; [k: string]: number | null | undefined }[];
-  dataKey: 'temperatureC' | 'humidityPct' | 'lux' | 'soilMoistureRaw';
+  dataKey: 'temperatureC' | 'humidityPct' | 'lux' | 'soilMoisturePct';
   band: Record<string, number> | undefined | null;
   bandKeys: Array<string | null>;
   events: CareEvent[];
@@ -280,15 +307,31 @@ function Chart({ label, data, dataKey, band, bandKeys, events, inverted }: Chart
               fontSize={10}
               minTickGap={28}
             />
-            <YAxis fontSize={10} width={32} domain={['auto', 'auto']} />
+            <YAxis
+              fontSize={10}
+              width={32}
+              // Pin y-domain so the ok band is always in view even when the
+              // sensor's range hugs one side. Without this, recharts auto-
+              // scales to data only and the green zone can fall off-screen.
+              domain={[
+                (dataMin: number) => {
+                  const bandMin = warn ? Math.min(warn.from, ok?.from ?? Infinity) : ok?.from ?? Infinity;
+                  return Math.floor(Math.min(dataMin, bandMin));
+                },
+                (dataMax: number) => {
+                  const bandMax = warn ? Math.max(warn.to, ok?.to ?? -Infinity) : ok?.to ?? -Infinity;
+                  return Math.ceil(Math.max(dataMax, bandMax));
+                },
+              ]}
+            />
             {warn && (
-              <ReferenceArea y1={warn.from} y2={warn.to} fill="rgb(234 179 8)" fillOpacity={0.06} />
+              <ReferenceArea y1={warn.from} y2={warn.to} fill="rgb(234 179 8)" fillOpacity={0.1} />
             )}
             {ok && (
-              <ReferenceArea y1={ok.from} y2={ok.to} fill="rgb(34 197 94)" fillOpacity={0.1} />
+              <ReferenceArea y1={ok.from} y2={ok.to} fill="rgb(34 197 94)" fillOpacity={0.18} />
             )}
             {alertSoilDry != null && (
-              <ReferenceArea y1={alertSoilDry} y2={alertSoilDry * 1.4} fill="rgb(239 68 68)" fillOpacity={0.05} />
+              <ReferenceArea y1={alertSoilDry} y2={alertSoilDry * 1.4} fill="rgb(239 68 68)" fillOpacity={0.08} />
             )}
             <Tooltip
               labelFormatter={(v) => new Date(Number(v)).toLocaleString('ru-RU')}

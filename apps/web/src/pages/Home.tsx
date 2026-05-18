@@ -14,21 +14,44 @@ import {
 import { BatteryIndicator, batteryLabel } from '../components/BatteryIndicator';
 import { BottomNav } from '../components/BottomNav';
 import { DragHandle } from '../components/DragHandle';
+import { Icon } from '../components/Icon';
+import { PlantArt } from '../components/PlantArt';
 import {
   isPushSupported,
   isStandalonePWA,
   subscribeToPush,
 } from '../lib/push';
 import {
-  IOSInstallPrompt,
-  shouldShowIOSInstall,
-} from '../components/IOSInstallPrompt';
+  InstallPrompt,
+  shouldShowInstall,
+} from '../components/InstallPrompt';
 
 type Status = 'loading' | 'no-device' | 'no-data' | 'ready';
 const ACTIVE_KEY = 'zelenka_active_device';
 const SWIPE_HINT_SEEN_KEY = 'zelenka_swipe_hint_seen';
 const SWIPE_MIN_DX = 60;
 const SWIPE_MAX_DY = 40;
+
+// Status palette mirrors tailwind.config.ts → status.* tokens. We need the
+// raw hex for the solid ring background and per-cell border colours.
+const RING_FILL: Record<RingStatus, string> = {
+  cold:  '#888780',
+  ok:    '#639922',
+  warn:  '#EF9F27',
+  alert: '#E24B4A',
+};
+const SEV_BORDER: Record<Severity, string> = {
+  ok:      '#639922',
+  warn:    '#EF9F27',
+  alert:   '#E24B4A',
+  unknown: '#B4B2A9',
+};
+const SEV_ICON: Record<Severity, string> = {
+  ok:      '#639922',
+  warn:    '#BA7517',
+  alert:   '#A52A29',
+  unknown: '#888780',
+};
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -42,12 +65,12 @@ export function HomePage() {
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [battery, setBattery] = useState<BatteryStatus | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [iosPromptOpen, setIosPromptOpen] = useState(() => shouldShowIOSInstall());
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [installPromptOpen, setInstallPromptOpen] = useState(() => shouldShowInstall() !== null);
   const [showSwipeHint, setShowSwipeHint] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
-  // One-time onboarding overlay when the user gains their second device — by
-  // that point swipe is meaningful and they likely don't know about it.
   useEffect(() => {
     if (devices.length < 2) return;
     if (typeof window === 'undefined') return;
@@ -80,7 +103,6 @@ export function HomePage() {
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
     if (Math.abs(dx) < SWIPE_MIN_DX || Math.abs(dy) > SWIPE_MAX_DY) return;
-    // Left-swipe (dx<0) = next plant, right-swipe (dx>0) = prev plant.
     switchByDelta(dx < 0 ? 1 : -1);
   };
 
@@ -89,13 +111,12 @@ export function HomePage() {
     setShowSwipeHint(false);
   };
 
-  // List devices once; pick a sensible active id; keep the list in state.
   useEffect(() => {
     let cancelled = false;
     api.me()
       .then((me) => { if (!cancelled) setUser(me.user); })
       .catch((err) => {
-        if ((err as { status?: number }).status === 401) navigate('/auth', { replace: true });
+        if ((err as { status?: number }).status === 401) navigate('/landing', { replace: true });
       });
 
     const reloadList = async () => {
@@ -115,14 +136,13 @@ export function HomePage() {
           localStorage.setItem(ACTIVE_KEY, next);
         }
       } catch (err) {
-        if ((err as { status?: number }).status === 401) navigate('/auth', { replace: true });
+        if ((err as { status?: number }).status === 401) navigate('/landing', { replace: true });
       }
     };
     reloadList();
     return () => { cancelled = true; };
   }, [navigate, activeId]);
 
-  // Per-active-device polling for latest measurement.
   useEffect(() => {
     if (!activeId) return;
     let cancelled = false;
@@ -136,7 +156,7 @@ export function HomePage() {
         setStatus(latest.measurement ? 'ready' : 'no-data');
       } catch (err) {
         const code = (err as { status?: number }).status;
-        if (code === 401) navigate('/auth', { replace: true });
+        if (code === 401) navigate('/landing', { replace: true });
       }
     };
     poll();
@@ -158,86 +178,91 @@ export function HomePage() {
       setActiveId(d.id);
       localStorage.setItem(ACTIVE_KEY, d.id);
       setStatus('no-data');
-      // Move the user into the provisioning walkthrough immediately — the
-      // setup screen carries the device token + captive-portal steps and
-      // polls /latest until the firmware checks in.
       navigate(`/devices/${d.id}/setup`, { state: { device: d } });
     }} />;
   }
 
   const device = devices.find((d) => d.id === activeId) ?? devices[0];
   const plant: Plant | null = device.plant ?? null;
-  const ringStatus: RingStatus = verdict?.ring ?? 'cold';
+  const rawRing: RingStatus = verdict?.ring ?? 'ok';
+  // Cold-start mode disabled by product decision — fold into ok visually.
+  // Per-cell severity stays honest so the user still sees real signals.
+  const ringStatus: RingStatus = rawRing === 'cold' ? 'ok' : rawRing;
   const title = plant?.name ?? device.name;
-  const subtitle = plant?.species?.commonNameRu
-    ?? plant?.species?.commonNameEn
-    ?? plant?.species?.scientificName
-    ?? (plant ? 'общий профиль' : null);
+  const headline = headlineFor(ringStatus, verdict);
+  const lowBattery = battery && (battery.estimate === 'low' || battery.estimate === 'critical');
 
   return (
     <main
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      className="relative min-h-full flex flex-col items-center justify-center p-6 pb-20 gap-6"
+      className="relative min-h-full pb-20 max-w-md mx-auto flex flex-col"
     >
-      <div className="absolute top-3 right-3 flex items-center gap-2">
-        {battery && (
-          <button
-            onClick={() => navigate(`/devices/${device.id}/manage`)}
-            title={`Заряд: ${batteryLabel(battery.estimate)} (${battery.voltage.toFixed(2)} В) — открыть управление датчиком`}
-            aria-label="Управление датчиком"
-            className="inline-flex items-center p-1"
-          >
-            <BatteryIndicator estimate={battery.estimate} className="h-3.5 w-auto" />
-          </button>
-        )}
-        <button
-          onClick={() => navigate('/settings')}
-          aria-label="Настройки"
-          className="text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 p-2"
-        >⚙</button>
-      </div>
-
-      <PlantSwitcher
-        devices={devices}
-        activeId={device.id}
+      <Header
+        onAdd={() => setAddOpen(true)}
+        onPickPlant={() => devices.length > 1 && setPickerOpen(true)}
+        onProfile={() => navigate('/settings')}
+        onRename={() => { if (plant) setRenameOpen(true); }}
         title={title}
-        subtitle={subtitle}
-        onOpen={() => setPickerOpen(true)}
+        showChevron={devices.length > 1}
       />
 
-      <Ring
-        status={ringStatus}
-        photoUrl={plant?.species?.defaultImageUrl ?? null}
-        fallbackLetter={(plant?.name ?? device.name).trim().charAt(0).toUpperCase()}
-      />
-
-      <DragHandle
-        label="Графики и журнал"
-        onActivate={() => navigate(`/devices/${device.id}`)}
-      />
-
-      {!plant && (
+      {lowBattery && battery && (
         <button
-          onClick={() => navigate(`/devices/${device.id}/identify`)}
-          className="rounded-full bg-status-ok text-white px-5 py-2 text-sm font-medium"
+          onClick={() => navigate(`/devices/${device.id}/manage`)}
+          className="mx-4 mt-1 w-[calc(100%-2rem)] flex items-center gap-2 px-3 py-2 rounded-lg bg-status-warn/10 text-left"
         >
-          Опознать растение
+          <BatteryIndicator estimate={battery.estimate} className="h-3.5 w-auto shrink-0" />
+          <span className="text-xs text-neutral-600 dark:text-neutral-300 flex-1">
+            Заряд: {batteryLabel(battery.estimate).toLowerCase()} ({battery.voltage.toFixed(2)} В)
+          </span>
         </button>
       )}
 
-      <PushControl />
+      <Hero
+        ringStatus={ringStatus}
+        headline={headline}
+        devices={devices}
+        activeId={device.id}
+        onOpenCharts={() => navigate(`/devices/${device.id}`)}
+      />
 
-      <Grid m={measurement} v={verdict} deviceId={device.id} />
+      <Grid
+        m={measurement}
+        v={verdict}
+        deviceId={device.id}
+      />
 
-      {status === 'no-data' && (
-        <p className="text-sm text-neutral-500 text-center max-w-sm">
-          Датчик ещё не присылал данные. Токен:&nbsp;
-          <code className="select-all break-all">{device.deviceToken}</code>
-        </p>
-      )}
+      <div className="flex-1" />
 
-      {iosPromptOpen && <IOSInstallPrompt onClose={() => setIosPromptOpen(false)} />}
+      <div className="flex flex-col items-center gap-3 px-4">
+        <DragHandle
+          label="Графики и журнал"
+          onActivate={() => navigate(`/devices/${device.id}`)}
+        />
+
+        {!plant && (
+          <button
+            onClick={() => navigate(`/devices/${device.id}/identify`)}
+            className="rounded-full bg-status-ok text-white px-5 py-2 text-sm font-medium"
+          >
+            Опознать растение
+          </button>
+        )}
+
+        <PushControl />
+
+        {status === 'no-data' && (
+          <button
+            onClick={() => navigate(`/devices/${device.id}/setup`, { state: { device } })}
+            className="text-sm text-neutral-500 text-center max-w-sm underline-offset-2 hover:underline"
+          >
+            Датчик ещё не присылал данные — продолжить подключение
+          </button>
+        )}
+      </div>
+
+      {installPromptOpen && <InstallPrompt onClose={() => setInstallPromptOpen(false)} />}
 
       {pickerOpen && (
         <PlantPicker
@@ -257,9 +282,237 @@ export function HomePage() {
           }}
         />
       )}
+
+      {addOpen && (
+        <AddDeviceModal
+          onClose={() => setAddOpen(false)}
+          onCreated={(d) => {
+            setDevices((arr) => [d, ...arr]);
+            setActiveId(d.id);
+            localStorage.setItem(ACTIVE_KEY, d.id);
+            setAddOpen(false);
+            navigate(`/devices/${d.id}/setup`, { state: { device: d } });
+          }}
+        />
+      )}
+
+      {renameOpen && plant && (
+        <RenamePlantModal
+          initial={plant.name}
+          onClose={() => setRenameOpen(false)}
+          onSubmit={async (name) => {
+            try {
+              await api.renamePlant(device.id, name);
+              setDevices((arr) => arr.map((d) => d.id === device.id
+                ? { ...d, plant: d.plant ? { ...d.plant, name } : d.plant }
+                : d));
+            } finally {
+              setRenameOpen(false);
+            }
+          }}
+        />
+      )}
+
       <BottomNav active="plant" />
       {showSwipeHint && <SwipeHintOverlay onDismiss={dismissSwipeHint} />}
     </main>
+  );
+}
+
+function headlineFor(ring: RingStatus, v: Verdict | null): string {
+  if (ring === 'ok') return 'Всё хорошо';
+  const soil = v?.perParam.soilMoistureRaw;
+  const temp = v?.perParam.temperatureC;
+  const lux  = v?.perParam.lux;
+  if (ring === 'alert') {
+    if (soil === 'alert') return 'Срочно полив';
+    if (temp === 'alert') return 'Температура вне нормы';
+    if (lux === 'alert')  return 'Темно';
+    return 'Нужно внимание';
+  }
+  if (soil === 'warn' || soil === 'alert') return 'Нужен полив';
+  if (temp === 'warn') return 'Жарко';
+  if (lux === 'warn')  return 'Темно';
+  return 'Условия не идеальны';
+}
+
+function Header({
+  onAdd, onPickPlant, onProfile, onRename, title, showChevron,
+}: {
+  onAdd: () => void;
+  onPickPlant: () => void;
+  onProfile: () => void;
+  onRename: () => void;
+  title: string;
+  showChevron: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 pt-3 pb-2">
+      <button
+        onClick={onAdd}
+        aria-label="Добавить датчик"
+        className="w-8 h-8 rounded-full border border-neutral-200 dark:border-neutral-800 flex items-center justify-center text-neutral-500 dark:text-neutral-400 active:bg-neutral-100 dark:active:bg-neutral-900"
+      >
+        <Icon name="plus" size={18} />
+      </button>
+      <div className="flex items-center gap-1 px-2 py-1">
+        <button
+          onClick={onRename}
+          aria-label="Переименовать растение"
+          className="text-base font-medium truncate max-w-[180px]"
+        >
+          {title}
+        </button>
+        {showChevron && (
+          <button onClick={onPickPlant} aria-label="Выбрать растение" className="text-neutral-500">
+            <Icon name="chevron-down" size={16} />
+          </button>
+        )}
+      </div>
+      <button
+        onClick={onProfile}
+        aria-label="Профиль"
+        className="w-8 h-8 rounded-full border border-neutral-200 dark:border-neutral-800 flex items-center justify-center text-neutral-500 dark:text-neutral-400 active:bg-neutral-100 dark:active:bg-neutral-900"
+      >
+        <Icon name="user" size={18} />
+      </button>
+    </div>
+  );
+}
+
+function Hero({
+  ringStatus, headline, devices, activeId, onOpenCharts,
+}: {
+  ringStatus: RingStatus;
+  headline: string;
+  devices: Device[];
+  activeId: string;
+  onOpenCharts: () => void;
+}) {
+  const idx = devices.findIndex((d) => d.id === activeId);
+  return (
+    <div className="flex flex-col items-center px-4 pt-2 pb-1">
+      <button
+        onClick={onOpenCharts}
+        aria-label="Графики и журнал"
+        className="rounded-full focus:outline-none active:scale-[0.97] transition-transform"
+      >
+        <Ring status={ringStatus} />
+      </button>
+      <div className="mt-3 text-lg font-medium text-neutral-900 dark:text-neutral-100">
+        {headline}
+      </div>
+      {devices.length > 1 && (
+        <div className="flex gap-1.5 mt-2">
+          {devices.map((d, i) => (
+            <span
+              key={d.id}
+              className={`block w-1.5 h-1.5 rounded-full ${
+                i === idx
+                  ? 'bg-neutral-800 dark:bg-neutral-200'
+                  : 'bg-neutral-300 dark:bg-neutral-700'
+              }`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Ring({ status }: { status: RingStatus }) {
+  return (
+    <div
+      className="w-36 h-36 rounded-full p-[7px] flex items-center justify-center"
+      style={{ backgroundColor: RING_FILL[status] }}
+      aria-label={`Состояние: ${status}`}
+    >
+      <div className="w-full h-full rounded-full bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center">
+        <PlantArt className="w-[68px] h-auto text-neutral-700 dark:text-neutral-300" />
+      </div>
+    </div>
+  );
+}
+
+
+function Grid({
+  m, v, deviceId,
+}: {
+  m: Measurement | null;
+  v: Verdict | null;
+  deviceId: string;
+}) {
+  const navigate = useNavigate();
+  return (
+    <div className="grid grid-cols-2 gap-2 px-4 pt-3 pb-4">
+      <Cell
+        icon="droplet" label="Почва"
+        value={m?.soilMoisturePct ?? m?.soilMoistureRaw}
+        unit={m?.soilMoisturePct == null ? '' : '%'}
+        sev={v?.perParam.soilMoistureRaw}
+        onClick={() => navigate(`/devices/${deviceId}/p/soil`)}
+      />
+      <Cell
+        icon="sun" label="Свет"
+        value={m?.lux} unit="лк"
+        sev={v?.perParam.lux}
+        formatThousands
+        onClick={() => navigate(`/devices/${deviceId}/p/light`)}
+      />
+      <Cell
+        icon="temperature" label="Температура"
+        value={m?.temperatureC} unit="°C"
+        sev={v?.perParam.temperatureC}
+        onClick={() => navigate(`/devices/${deviceId}/p/temperature`)}
+      />
+      <Cell
+        icon="mist" label="Воздух"
+        value={m?.humidityPct} unit="%"
+        sev={v?.perParam.humidityPct}
+        onClick={() => navigate(`/devices/${deviceId}/p/humidity`)}
+      />
+    </div>
+  );
+}
+
+function Cell({
+  icon, label, value, unit, sev, formatThousands, onClick,
+}: {
+  icon: 'droplet' | 'sun' | 'temperature' | 'mist';
+  label: string;
+  value: number | null | undefined;
+  unit: string;
+  sev: Severity | undefined;
+  formatThousands?: boolean;
+  onClick: () => void;
+}) {
+  const display = value == null
+    ? '—'
+    : formatThousands && value >= 1000
+      ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k`
+      : Number.isInteger(value) ? value.toString() : value.toFixed(1);
+
+  const severity: Severity = sev ?? 'ok';
+  const borderColor = SEV_BORDER[severity];
+  const iconColor = SEV_ICON[severity];
+
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-xl bg-neutral-50 dark:bg-neutral-900 px-3 py-2.5 text-left active:scale-[0.98] transition-transform border-[1.5px]"
+      style={{ borderColor }}
+    >
+      <div className="flex items-center gap-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
+        <Icon name={icon} size={15} style={{ color: iconColor }} />
+        <span>{label}</span>
+      </div>
+      <div className="mt-1 flex items-baseline gap-1">
+        <span className="text-[17px] font-medium tabular-nums">{display}</span>
+        {value != null && unit && (
+          <span className="text-[12px] text-neutral-500 dark:text-neutral-400">{unit}</span>
+        )}
+      </div>
+    </button>
   );
 }
 
@@ -292,145 +545,71 @@ function SwipeHintOverlay({ onDismiss }: { onDismiss: () => void }) {
   );
 }
 
-function PlantSwitcher({
-  devices, activeId, title, subtitle, onOpen,
-}: {
-  devices: Device[];
-  activeId: string;
-  title: string;
-  subtitle: string | null;
-  onOpen: () => void;
-}) {
-  if (devices.length <= 1) {
-    return (
-      <div className="text-center">
-        <h1 className="text-xl font-semibold">{title}</h1>
-        {subtitle && <p className="text-sm text-neutral-500 italic">{subtitle}</p>}
-      </div>
-    );
+function ringBorderColor(s: RingStatus | string | null | undefined): string {
+  switch (s) {
+    case 'warn':  return '#EF9F27';
+    case 'alert': return '#E24B4A';
+    // cold/ok/null all render as ok-green now that cold-start is removed.
+    default:      return '#639922';
   }
-  const idx = devices.findIndex((d) => d.id === activeId);
-  return (
-    <button onClick={onOpen} className="text-center flex flex-col items-center gap-1">
-      <span className="text-xl font-semibold inline-flex items-center gap-1">
-        {title}
-        <span className="text-neutral-400" aria-hidden>▾</span>
-      </span>
-      {subtitle && <span className="text-sm text-neutral-500 italic">{subtitle}</span>}
-      <span className="flex gap-1.5 mt-1">
-        {devices.map((d, i) => (
-          <span
-            key={d.id}
-            className={`block w-1.5 h-1.5 rounded-full ${i === idx ? 'bg-neutral-700 dark:bg-neutral-200' : 'bg-neutral-300 dark:bg-neutral-700'}`}
-          />
-        ))}
-      </span>
-    </button>
-  );
 }
 
-function Ring({
-  status, photoUrl, fallbackLetter,
+function ringHeadline(s: RingStatus | string | null | undefined): string {
+  switch (s) {
+    case 'warn':  return 'Нужен полив';
+    case 'alert': return 'Нужно внимание';
+    default:      return 'Всё хорошо';
+  }
+}
+
+function RenamePlantModal({
+  initial, onClose, onSubmit,
 }: {
-  status: RingStatus;
-  photoUrl: string | null;
-  fallbackLetter: string;
+  initial: string;
+  onClose: () => void;
+  onSubmit: (name: string) => Promise<void> | void;
 }) {
-  const styles: Record<RingStatus, string> = {
-    cold:  'border-status-cold border-dashed',
-    ok:    'border-status-ok',
-    warn:  'border-status-warn',
-    alert: 'border-status-alert',
-  };
+  const [value, setValue] = useState(initial);
+  const [pending, setPending] = useState(false);
   return (
     <div
-      className={`relative w-48 h-48 rounded-full border-[10px] flex items-center justify-center overflow-hidden ${styles[status]}`}
-      aria-label={`Состояние: ${status}`}
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-3"
     >
-      {photoUrl ? (
-        <img
-          src={photoUrl}
-          alt=""
-          className="w-full h-full object-cover"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-neutral-900 rounded-2xl w-full max-w-sm p-5 space-y-4"
+      >
+        <h2 className="text-lg font-medium">Название растения</h2>
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          maxLength={64}
+          onKeyDown={(e) => { if (e.key === 'Enter' && value.trim()) {
+            setPending(true); Promise.resolve(onSubmit(value.trim())).finally(() => setPending(false));
+          } }}
+          className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-status-ok"
         />
-      ) : (
-        <div className="w-full h-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
-          <span className="text-5xl font-light text-neutral-400">{fallbackLetter}</span>
+        <div className="flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 rounded-lg border border-neutral-200 dark:border-neutral-800 py-2 text-sm"
+          >Отмена</button>
+          <button
+            onClick={() => {
+              const trimmed = value.trim();
+              if (!trimmed) return;
+              setPending(true);
+              Promise.resolve(onSubmit(trimmed)).finally(() => setPending(false));
+            }}
+            disabled={pending || !value.trim()}
+            className="flex-1 rounded-lg bg-status-ok text-white py-2 text-sm font-medium disabled:opacity-50"
+          >{pending ? 'Сохраняем…' : 'Сохранить'}</button>
         </div>
-      )}
-    </div>
-  );
-}
-
-function Grid({ m, v, deviceId }: { m: Measurement | null; v: Verdict | null; deviceId: string }) {
-  const navigate = useNavigate();
-  return (
-    <div className="grid grid-cols-2 gap-3 w-full max-w-md">
-      <Cell
-        label="Темп." value={m?.temperatureC} unit="°C"
-        sev={v?.perParam.temperatureC}
-        onClick={() => navigate(`/devices/${deviceId}/p/temperature`)}
-      />
-      <Cell
-        label="Влажность" value={m?.humidityPct} unit="%"
-        sev={v?.perParam.humidityPct}
-        onClick={() => navigate(`/devices/${deviceId}/p/humidity`)}
-      />
-      <Cell
-        label="Свет" value={m?.lux} unit="lx"
-        sev={v?.perParam.lux}
-        onClick={() => navigate(`/devices/${deviceId}/p/light`)}
-      />
-      <Cell
-        label="Почва"
-        value={m?.soilMoisturePct ?? m?.soilMoistureRaw}
-        unit={m?.soilMoisturePct == null ? 'raw' : '%'}
-        sev={v?.perParam.soilMoistureRaw}
-        onClick={() => navigate(`/devices/${deviceId}/p/soil`)}
-      />
-    </div>
-  );
-}
-
-function Cell({
-  label, value, unit, sev, onClick,
-}: {
-  label: string; value: number | null | undefined; unit: string;
-  sev: Severity | undefined; onClick: () => void;
-}) {
-  const display = value == null
-    ? '—'
-    : Number.isInteger(value) ? value.toString() : value.toFixed(1);
-  const borderClass = sev === 'alert'
-    ? 'border-status-alert'
-    : sev === 'warn'
-    ? 'border-status-warn'
-    : sev === 'ok'
-    ? 'border-status-ok/40'
-    : 'border-neutral-200 dark:border-neutral-800';
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-2xl border-2 p-4 text-left active:scale-[0.98] transition-transform ${borderClass}`}
-    >
-      <div className="text-sm text-neutral-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums">
-        {display}
-        <span className="text-base font-normal text-neutral-500 ml-1">{unit}</span>
       </div>
-    </button>
+    </div>
   );
-}
-
-function statusDotClass(s: RingStatus | string | null | undefined): string {
-  switch (s) {
-    case 'ok':    return 'bg-status-ok';
-    case 'warn':  return 'bg-status-warn';
-    case 'alert': return 'bg-status-alert';
-    case 'cold':
-    default:      return 'bg-status-cold';
-  }
 }
 
 function PlantPicker({
@@ -452,38 +631,34 @@ function PlantPicker({
         onClick={(e) => e.stopPropagation()}
         className="bg-white dark:bg-neutral-900 rounded-2xl w-full max-w-sm p-3 space-y-1"
       >
-        <h3 className="font-semibold px-2 pt-1 pb-2 text-sm text-neutral-500">Растения</h3>
+        <h3 className="font-medium px-2 pt-1 pb-2 text-sm text-neutral-500">Растения</h3>
         <ul>
           {devices.map((d) => {
             const isActive = d.id === activeId;
             const name = d.plant?.name ?? d.name;
-            const sub = d.plant?.species?.commonNameRu
-              ?? d.plant?.species?.commonNameEn
-              ?? d.plant?.species?.scientificName
-              ?? (d.plant ? 'общий профиль' : 'нет растения');
-            const photo = d.plant?.species?.defaultImageUrl;
-            const dot = statusDotClass(d.plant?.lastRingStatus);
+            const sub = ringHeadline(d.plant?.lastRingStatus);
+            const color = ringBorderColor(d.plant?.lastRingStatus);
             return (
               <li key={d.id}>
                 <button
                   onClick={() => onPick(d.id)}
                   className={`w-full flex items-center gap-3 rounded-xl px-2 py-2 text-left ${isActive ? 'bg-neutral-100 dark:bg-neutral-800' : ''}`}
                 >
-                  <span className="relative shrink-0">
-                    {photo ? (
-                      <img src={photo} alt="" className="w-10 h-10 rounded-full object-cover" />
-                    ) : (
-                      <span className="w-10 h-10 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400">
-                        {name.charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                    <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ring-2 ring-white dark:ring-neutral-900 ${dot}`} />
+                  <span
+                    className="shrink-0 w-10 h-10 rounded-full p-[2px] flex items-center justify-center"
+                    style={{ backgroundColor: color }}
+                  >
+                    <span className="w-full h-full rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+                      <PlantArt className="w-[18px] h-auto text-neutral-700 dark:text-neutral-300" strokeWidth={16} />
+                    </span>
                   </span>
                   <span className="flex-1">
                     <div className="font-medium">{name}</div>
-                    <div className="text-xs text-neutral-500 italic">{sub}</div>
+                    <div className="text-xs text-neutral-500">{sub}</div>
                   </span>
-                  {isActive && <span className="text-status-ok text-sm">✓</span>}
+                  {isActive && (
+                    <Icon name="check" size={17} className="text-neutral-900 dark:text-neutral-100" />
+                  )}
                 </button>
               </li>
             );
@@ -502,6 +677,26 @@ function PlantPicker({
             >+ Добавить растение</button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AddDeviceModal({ onClose, onCreated }: {
+  onClose: () => void;
+  onCreated: (d: Device) => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-neutral-900 rounded-2xl w-full max-w-sm p-4"
+      >
+        <h3 className="font-medium pb-3 text-base">Добавить растение</h3>
+        <AddDeviceInline onCreated={onCreated} onCancel={onClose} />
       </div>
     </div>
   );
@@ -570,25 +765,14 @@ function PushControl() {
     }
   };
 
-  const sendTest = async () => {
-    try { await api.pushTest(); }
-    catch (err) { setError((err as Error).message); }
-  };
-
   if (state === 'unsupported') return null;
+  if (state === 'on') return null;
   if (state === 'needs-pwa') {
     return (
       <p className="text-sm text-neutral-500 text-center max-w-sm">
         Чтобы получать уведомления на iPhone, добавьте Zelenka на главный
         экран через значок «Поделиться».
       </p>
-    );
-  }
-  if (state === 'on') {
-    return (
-      <button onClick={sendTest} className="text-sm text-status-ok underline">
-        Прислать тестовое уведомление
-      </button>
     );
   }
   if (state === 'denied') {

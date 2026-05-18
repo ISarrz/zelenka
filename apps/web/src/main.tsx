@@ -3,12 +3,14 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthPage } from './pages/Auth';
 import { AuthConsumePage } from './pages/AuthConsume';
+import { ClaimPage } from './pages/Claim';
 import { DeviceManagePage } from './pages/DeviceManage';
 import { DeviceSetupPage } from './pages/DeviceSetup';
 import { FeedPage } from './pages/Feed';
 import { FirmwareUpdatePage } from './pages/FirmwareUpdate';
 import { HomePage } from './pages/Home';
 import { IdentifyPage } from './pages/Identify';
+import { LandingPage } from './pages/Landing';
 import { MetricDetailPage } from './pages/MetricDetail';
 import { PlantCardPage } from './pages/PlantCard';
 import { SettingsPage } from './pages/Settings';
@@ -20,8 +22,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/feed" element={<FeedPage />} />
+        <Route path="/landing" element={<LandingPage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/auth/consume" element={<AuthConsumePage />} />
+        <Route path="/claim" element={<ClaimPage />} />
         <Route path="/devices/:deviceId/identify" element={<IdentifyPage />} />
         <Route path="/devices/:id/manage" element={<DeviceManagePage />} />
         <Route path="/devices/:id/setup" element={<DeviceSetupPage />} />

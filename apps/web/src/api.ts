@@ -120,11 +120,33 @@ export interface IdSuggestion {
   similarImageUrl: string | null;
 }
 
+export interface SpeciesSearchHit {
+  id: number;
+  scientificName: string;
+  commonName: string | null;
+  defaultImageUrl: string | null;
+}
+
 export const api = {
-  requestMagicLink: (email: string) =>
+  requestMagicLink: (email: string, next?: string) =>
     request<{ status: string }>('/auth/magic-link/request', {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify(next ? { email, next } : { email }),
+    }),
+  claimDevice: (token: string) =>
+    request<{ device: Device }>('/devices/claim', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+  setSoilCalibration: (deviceId: string, body: { dryRaw?: number; wetRaw?: number }) =>
+    request<{ device: Device }>(`/devices/${deviceId}/calibration`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  renamePlant: (deviceId: string, name: string) =>
+    request<{ plant: Plant }>(`/devices/${deviceId}/rename-plant`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
     }),
   consumeMagicLink: (token: string) =>
     request<{ user: User }>('/auth/magic-link/consume', {
@@ -147,6 +169,8 @@ export const api = {
         firmwareVersion: string | null;
         wifiRssi: number | null;
         lastSeenAt: string | null;
+        soilDryRaw: number | null;
+        soilWetRaw: number | null;
       };
       plant: Plant | null;
       measurement: Measurement | null;
@@ -178,6 +202,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ scientificName }),
     }),
+  searchSpecies: (q: string) =>
+    request<{ hits: SpeciesSearchHit[] }>(
+      `/plants/species/search?q=${encodeURIComponent(q)}`,
+    ),
   bindPlant: (
     deviceId: string,
     body: { speciesId: string | null; name: string; photoUrl?: string | null },

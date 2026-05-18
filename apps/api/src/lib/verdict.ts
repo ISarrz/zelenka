@@ -8,6 +8,11 @@ export interface Reading {
   humidityPct?: number | null;
   lux?: number | null;
   soilMoistureRaw?: number | null;
+  // Count of distinct hours in the last 24h where lux was bright enough
+  // (≥ BRIGHT_LUX_THRESHOLD). Caller computes this server-side; verdict uses
+  // it instead of the instant `lux` whenever both this and minSunHours are
+  // available, so plants aren't flagged "темно" at night.
+  hoursBrightToday?: number | null;
 }
 
 export interface PerParamVerdict {
@@ -35,6 +40,16 @@ function gradeBand(
   return 'ok';
 }
 
+function gradeSunHours(
+  hours: number | null | undefined,
+  target: number | undefined,
+): Severity {
+  if (hours == null || target == null) return 'unknown';
+  if (hours < target / 2) return 'alert';
+  if (hours < target)     return 'warn';
+  return 'ok';
+}
+
 function gradeSoil(
   v: number | null | undefined,
   band?: { wet: number; dry: number; criticallyDry: number },
@@ -55,10 +70,27 @@ export function evaluate(
   thresholds: CareThresholds,
   identifiedAt: Date | null,
 ): Verdict {
+  // Light is graded by hours-of-bright-light vs xSunlightDuration target
+  // when both are available (the physiologically meaningful metric). Falls
+  // back to the instant-lux band only if the caller didn't supply a windowed
+  // count — keeps tests and any other call sites working.
+  //
+  // Guard: the windowed metric needs a full 24 h of samples to be fair. In
+  // the first day after binding, hoursBrightToday is always low simply
+  // because the device hasn't been collecting that long — return 'unknown'
+  // instead of crying alert on a fresh plant.
+  const SUN_WARMUP_MS = 24 * 60 * 60 * 1000;
+  const sunWarmingUp = identifiedAt
+    ? Date.now() - identifiedAt.getTime() < SUN_WARMUP_MS
+    : false;
+  const luxSeverity = reading.hoursBrightToday != null && thresholds.minSunHours != null
+    ? (sunWarmingUp ? 'unknown' : gradeSunHours(reading.hoursBrightToday, thresholds.minSunHours))
+    : gradeBand(reading.lux, thresholds.lux);
+
   const perParam: PerParamVerdict = {
     temperatureC: gradeBand(reading.temperatureC, thresholds.temperatureC),
     humidityPct:  gradeBand(reading.humidityPct,  thresholds.humidityPct),
-    lux:          gradeBand(reading.lux,          thresholds.lux),
+    lux:          luxSeverity,
     soilMoistureRaw: gradeSoil(reading.soilMoistureRaw, thresholds.soilMoistureRaw),
   };
 

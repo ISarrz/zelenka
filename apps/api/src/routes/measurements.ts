@@ -6,8 +6,23 @@ import { batteryVoltage, updateBatteryCounters } from '../lib/battery.js';
 import { detectAutoEvents } from '../lib/care_events.js';
 import { evaluatePushTriggers } from '../lib/rules.js';
 import type { CareThresholds } from '../lib/thresholds.js';
-import { GENERIC_THRESHOLDS } from '../lib/thresholds.js';
+import { BRIGHT_LUX_THRESHOLD, GENERIC_THRESHOLDS } from '../lib/thresholds.js';
 import { evaluate, type RingStatus } from '../lib/verdict.js';
+import { soilPctFromRaw } from '../lib/soil.js';
+
+async function countBrightHours(deviceId: string): Promise<number> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const rows = await prisma.$queryRaw<Array<{ hours: bigint | number }>>`
+    SELECT COUNT(DISTINCT date_trunc('hour', "measuredAt")) AS hours
+    FROM "Measurement"
+    WHERE "deviceId" = ${deviceId}
+      AND "measuredAt" >= ${since}
+      AND "lux" IS NOT NULL
+      AND "lux" >= ${BRIGHT_LUX_THRESHOLD}
+  `;
+  const n = rows[0]?.hours ?? 0;
+  return typeof n === 'bigint' ? Number(n) : n;
+}
 
 // One physical sample from the sensor. All fields nullable so firmware can ship
 // an early build that only fills, say, temperatureC + soilMoistureRaw.
@@ -73,6 +88,15 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
       priorBatteryVoltage = batteryVoltage(lastBattery?.batteryRaw, lastBattery?.batteryMv);
     }
 
+    // Pull soil calibration once for the whole batch so we can render
+    // pct = f(raw, dry, wet) at write-time. Firmware-provided pct still
+    // wins when present — it's already the right answer, no need to recompute.
+    const calRow = await prisma.device.findUnique({
+      where: { id: req.deviceId! },
+      select: { soilDryRaw: true, soilWetRaw: true },
+    });
+    const cal = { soilDryRaw: calRow?.soilDryRaw ?? null, soilWetRaw: calRow?.soilWetRaw ?? null };
+
     await prisma.measurement.createMany({
       data: samples.map((s) => ({
         deviceId: req.deviceId!,
@@ -82,7 +106,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
         pressureHpa: s.pressureHpa ?? null,
         lux: s.lux ?? null,
         soilMoistureRaw: s.soilMoistureRaw ?? null,
-        soilMoisturePct: s.soilMoisturePct ?? null,
+        soilMoisturePct: s.soilMoisturePct ?? soilPctFromRaw(s.soilMoistureRaw, cal),
         batteryRaw: s.batteryRaw ?? null,
         batteryMv: s.batteryMv ?? null,
         // Stamp the batch-level RSSI onto every sample so history queries
@@ -137,16 +161,22 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     const plant = device?.plant;
-    if (device && plant) {
+    // device.user is nullable in the schema (orphans pre-claim), but a Plant
+    // can only exist once the device has been claimed, so device + plant
+    // together imply a non-null user.
+    if (device && plant && device.user) {
       const last = samples[samples.length - 1];
       const measuredAt = last.measuredAt ? new Date(last.measuredAt) : now;
-      const thresholds: CareThresholds =
-        (plant.species?.thresholds as unknown as CareThresholds | null) ?? GENERIC_THRESHOLDS;
+      const speciesThresholds =
+        (plant.species?.thresholds as unknown as CareThresholds | null) ?? null;
+      const thresholds: CareThresholds = { ...GENERIC_THRESHOLDS, ...(speciesThresholds ?? {}) };
+      const hoursBrightToday = await countBrightHours(device.id);
       const verdict = evaluate(
         {
           temperatureC: last.temperatureC ?? null,
           humidityPct: last.humidityPct ?? null,
           lux: last.lux ?? null,
+          hoursBrightToday,
           soilMoistureRaw: last.soilMoistureRaw ?? null,
         },
         thresholds,

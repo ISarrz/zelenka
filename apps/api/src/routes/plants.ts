@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireUser } from '../lib/auth.js';
 import { identifyPlant } from '../lib/plantid.js';
-import { findBestPerenualMatch } from '../lib/perenual.js';
+import { findBestPerenualMatch, searchPerenual } from '../lib/perenual.js';
 import {
   copyFromUpstreamMirror,
   downloadPhoto,
@@ -71,6 +71,15 @@ export async function plantRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  // Manual species picker — typeahead over the Perenual mirror. Returns
+  // small hits (no thresholds/details), enough to render the list. Picking
+  // a row goes through /resolve to actually create the PlantSpecies + bind.
+  app.get('/api/plants/species/search', { preHandler: requireUser }, async (req) => {
+    const q = (req.query as { q?: string }).q?.trim() ?? '';
+    const hits = await searchPerenual(q, 25);
+    return { hits };
+  });
+
   // Get-or-create a PlantSpecies row by scientific name. Looks up Perenual to
   // populate thresholds + image; falls back to generic if no match.
   app.post('/api/plants/species/resolve', { preHandler: requireUser }, async (req, reply) => {
@@ -93,6 +102,7 @@ export async function plantRoutes(app: FastifyInstance): Promise<void> {
           watering: hit.watering,
           sunlight: hit.sunlight,
           details: hit.details,
+          minSunHours: hit.minSunHours,
         })
       : GENERIC_THRESHOLDS;
     const notifTexts = hit ? notificationTextsFromPerenual({ watering: hit.watering }) : null;

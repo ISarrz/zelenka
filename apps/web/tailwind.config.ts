@@ -10,10 +10,16 @@ const config: Config = {
         // text, per the design doc ("Status color is carried by ring / cell
         // border / icons, never by text").
         status: {
-          ok: '#22c55e',
-          warn: '#eab308',
-          alert: '#ef4444',
-          cold: '#94a3b8',
+          ok: '#639922',
+          'ok-ink': '#3F6315',
+          warn: '#EF9F27',
+          'warn-ink': '#BA7517',
+          alert: '#E24B4A',
+          'alert-ink': '#A52A29',
+          cold: '#888780',
+          'cold-soft': '#B4B2A9',
+          recovery: '#378ADD',
+          'recovery-ink': '#185FA5',
         },
       },
     },

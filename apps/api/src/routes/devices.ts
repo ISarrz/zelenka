@@ -4,10 +4,42 @@ import { prisma } from '../db.js';
 import { requireUser } from '../lib/auth.js';
 import { newToken } from '../lib/sessions.js';
 import { buildBatteryStatus } from '../lib/battery.js';
-import { GENERIC_THRESHOLDS, type CareThresholds } from '../lib/thresholds.js';
+import { BRIGHT_LUX_THRESHOLD, GENERIC_THRESHOLDS, type CareThresholds } from '../lib/thresholds.js';
 import { evaluate } from '../lib/verdict.js';
+import { soilPctFromRaw } from '../lib/soil.js';
+
+// Count distinct hour-buckets in the last 24h where lux crossed the bright
+// threshold at least once. That count is the "did the plant get its daily
+// light" metric verdict grades against minSunHours.
+async function countBrightHours(deviceId: string): Promise<number> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const rows = await prisma.$queryRaw<Array<{ hours: bigint | number }>>`
+    SELECT COUNT(DISTINCT date_trunc('hour', "measuredAt")) AS hours
+    FROM "Measurement"
+    WHERE "deviceId" = ${deviceId}
+      AND "measuredAt" >= ${since}
+      AND "lux" IS NOT NULL
+      AND "lux" >= ${BRIGHT_LUX_THRESHOLD}
+  `;
+  const n = rows[0]?.hours ?? 0;
+  return typeof n === 'bigint' ? Number(n) : n;
+}
 
 const CreateBody = z.object({ name: z.string().min(1).max(64) });
+
+const ClaimBody = z.object({ token: z.string().min(8).max(128) });
+
+// At least one of dryRaw/wetRaw is required. Each is a 12-bit ADC reading
+// (0–4095) — server-side we don't enforce ordering at write time, the soil
+// helper bails out gracefully on bad ordering.
+const CalibrationBody = z
+  .object({
+    dryRaw: z.number().int().min(0).max(4095).optional(),
+    wetRaw: z.number().int().min(0).max(4095).optional(),
+  })
+  .refine((b) => b.dryRaw !== undefined || b.wetRaw !== undefined, {
+    message: 'at least one of dryRaw, wetRaw is required',
+  });
 
 const BindPlantBody = z.object({
   speciesId: z.string().uuid().nullable().optional(),
@@ -23,6 +55,29 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       include: { plant: { include: { species: true } } },
     });
     return { devices };
+  });
+
+  // Bind an orphan (factory-minted) device to the current user. Token is the
+  // value printed on the QR sticker; the firmware has the same value baked
+  // into NVS, so after claim the user only fills Wi-Fi creds on the captive
+  // portal. Idempotent for the same user, 409 if already owned by someone else.
+  app.post('/api/devices/claim', { preHandler: requireUser }, async (req, reply) => {
+    const parsed = ClaimBody.safeParse(req.body);
+    if (!parsed.success) { reply.code(400); return { error: 'invalid token' }; }
+
+    const device = await prisma.device.findUnique({ where: { deviceToken: parsed.data.token } });
+    if (!device) { reply.code(404); return { error: 'unknown device' }; }
+    if (device.userId && device.userId !== req.userId) {
+      reply.code(409);
+      return { error: 'already claimed' };
+    }
+    if (device.userId === req.userId) return { device };
+
+    const updated = await prisma.device.update({
+      where: { id: device.id },
+      data: { userId: req.userId!, claimedAt: new Date() },
+    });
+    return { device: updated };
   });
 
   app.post('/api/devices', { preHandler: requireUser }, async (req, reply) => {
@@ -52,6 +107,25 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
     await prisma.device.delete({ where: { id } });
     reply.code(204);
     return null;
+  });
+
+  // Persist per-device soil-moisture calibration. Body carries the latest
+  // raw ADC reading captured at the corresponding step in setup ("sensor in
+  // air" → dryRaw, "sensor in water" → wetRaw). Either or both can be sent.
+  app.post('/api/devices/:id/calibration', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const device = await prisma.device.findFirst({ where: { id, userId: req.userId } });
+    if (!device) { reply.code(404); return { error: 'not found' }; }
+    const parsed = CalibrationBody.safeParse(req.body);
+    if (!parsed.success) { reply.code(400); return { error: parsed.error.issues[0]?.message ?? 'invalid body' }; }
+    const updated = await prisma.device.update({
+      where: { id },
+      data: {
+        ...(parsed.data.dryRaw !== undefined ? { soilDryRaw: parsed.data.dryRaw } : {}),
+        ...(parsed.data.wetRaw !== undefined ? { soilWetRaw: parsed.data.wetRaw } : {}),
+      },
+    });
+    return { device: updated };
   });
 
   // Software-trigger factory reset. The flag is delivered to the device on
@@ -137,6 +211,24 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
     return { plant };
   });
 
+  // Rename a plant in-place (no species change, no cold-start reset). Used
+  // by the home-screen tap-on-title affordance — handy when Plant.id picked
+  // a Latin/English name the user wants to overwrite.
+  app.post('/api/devices/:id/rename-plant', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = z.object({ name: z.string().min(1).max(64) }).safeParse(req.body);
+    if (!body.success) { reply.code(400); return { error: 'invalid body' }; }
+    const device = await prisma.device.findFirst({ where: { id, userId: req.userId } });
+    if (!device) { reply.code(404); return { error: 'not found' }; }
+    const plant = await prisma.plant.findUnique({ where: { deviceId: device.id } });
+    if (!plant) { reply.code(404); return { error: 'no plant bound' }; }
+    const updated = await prisma.plant.update({
+      where: { id: plant.id },
+      data: { name: body.data.name },
+    });
+    return { plant: updated };
+  });
+
   // Time-series for charts. For 7-day windows we return raw points (~1k);
   // for 30-day we down-sample to hourly averages on the DB side so the
   // payload stays well under 100 KB.
@@ -220,14 +312,20 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       orderBy: { measuredAt: 'desc' },
     });
 
-    const thresholds: CareThresholds =
-      (device.plant?.species?.thresholds as unknown as CareThresholds | null) ?? GENERIC_THRESHOLDS;
+    // Existing species rows predate minSunHours, so layer them over the
+    // generic defaults — species values override per-key, anything missing
+    // (notably minSunHours) is filled in.
+    const speciesThresholds =
+      (device.plant?.species?.thresholds as unknown as CareThresholds | null) ?? null;
+    const thresholds: CareThresholds = { ...GENERIC_THRESHOLDS, ...(speciesThresholds ?? {}) };
+    const hoursBrightToday = await countBrightHours(device.id);
     const verdict = latest
       ? evaluate(
           {
             temperatureC: latest.temperatureC,
             humidityPct: latest.humidityPct,
             lux: latest.lux,
+            hoursBrightToday,
             soilMoistureRaw: latest.soilMoistureRaw,
           },
           thresholds,
@@ -242,6 +340,14 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       species: device.plant.species ? speciesForWire(device.plant.species) : null,
     } : null;
 
+    // Inject calibrated soilMoisturePct into the wire copy if the stored
+    // value is null (i.e. the firmware didn't send it) but we have both
+    // calibration anchors. Keeps reads consistent whether or not the
+    // sample was stored before calibration was set.
+    const measurementForWire = latest && latest.soilMoisturePct == null
+      ? { ...latest, soilMoisturePct: soilPctFromRaw(latest.soilMoistureRaw, device) }
+      : latest;
+
     return {
       device: {
         id: device.id,
@@ -249,9 +355,11 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         firmwareVersion: device.firmwareVersion,
         wifiRssi: device.wifiRssi,
         lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
+        soilDryRaw: device.soilDryRaw,
+        soilWetRaw: device.soilWetRaw,
       },
       plant: slimmedPlant,
-      measurement: latest,
+      measurement: measurementForWire,
       verdict,
       thresholds,
       battery: latest

@@ -13,6 +13,25 @@ export function AuthConsumePage() {
       setError('Ссылка некорректная.');
       return;
     }
+    // `next` is the in-app path to land on after login. Restricted to
+    // relative paths so a tampered link can't bounce to a third-party site.
+    // We also honour a stashed claim token in localStorage — Resend's
+    // click-tracker sometimes strips query params, so Claim.tsx writes the
+    // token there as a fallback before sending the user to /auth.
+    let next: string;
+    const rawNext = params.get('next');
+    const pendingClaim = (() => {
+      try { return localStorage.getItem('zelenka_pending_claim'); } catch { return null; }
+    })();
+    if (pendingClaim) {
+      try { localStorage.removeItem('zelenka_pending_claim'); } catch { /* ok */ }
+      next = `/claim?t=${encodeURIComponent(pendingClaim)}`;
+    } else if (rawNext && rawNext.startsWith('/')) {
+      next = rawNext;
+    } else {
+      next = '/';
+    }
+
     const pinTimezone = async () => {
       try {
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -28,7 +47,7 @@ export function AuthConsumePage() {
         // Pin the user's actual browser timezone on first login so quiet
         // hours / morning digest don't drift if the server moves regions.
         await pinTimezone();
-        navigate('/', { replace: true });
+        navigate(next, { replace: true });
       })
       .catch(async (err: Error) => {
         // Common case: the link got hit twice (Gmail in-app browser + system
@@ -39,7 +58,7 @@ export function AuthConsumePage() {
         try {
           await api.me();
           await pinTimezone();
-          navigate('/', { replace: true });
+          navigate(next, { replace: true });
         } catch {
           setError(err.message);
         }

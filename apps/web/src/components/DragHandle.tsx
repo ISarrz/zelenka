@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { Icon } from './Icon';
 
 // Drag handle per docs/design-summary.html — small chevron-up + label
 // centered at the bottom of home content. Activated by tap *or* an upward
@@ -30,10 +31,10 @@ export function DragHandle({ label, onActivate }: Props) {
       onClick={onActivate}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      className="flex flex-col items-center gap-0.5 px-4 py-2 text-neutral-400 dark:text-neutral-500 active:text-neutral-700 dark:active:text-neutral-300 touch-pan-x"
+      className="flex items-center gap-1 px-4 py-2 text-neutral-400 dark:text-neutral-500 active:text-neutral-700 dark:active:text-neutral-300 touch-pan-x"
       aria-label={label}
     >
-      <span className="text-base leading-none">⌃</span>
+      <Icon name="chevron-up" size={15} />
       <span className="text-xs">{label}</span>
     </button>
   );

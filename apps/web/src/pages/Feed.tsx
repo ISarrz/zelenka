@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, type FeedItem } from '../api';
 import { BottomNav } from '../components/BottomNav';
+import { Icon } from '../components/Icon';
 
 // Global events feed per docs/design-summary.html §feed. Day-grouped list of
 // care events + non-suppressed pushes. Each row navigates to the relevant
@@ -16,30 +17,37 @@ interface KindConfig {
   // What screen to open when the row is tapped. 'home' means stay on /,
   // 'manage' means /devices/:deviceId/manage. 'metric' picks a metric.
   target: 'home' | 'manage' | { metric: 'soil' | 'light' | 'temperature' | 'humidity' };
-  symbol: string;
+  // Minimal line-icon (Tabler-style) from our Icon set — replaces colourful
+  // emoji symbols for a calmer feed look that matches the design doc.
+  icon: IconKind;
 }
+
+type IconKind =
+  | 'droplet' | 'sun' | 'temperature' | 'mist' | 'plant'
+  | 'check' | 'alert-circle' | 'info-circle' | 'wifi-off'
+  | 'arrow-right';
 
 const KIND: Record<string, KindConfig> = {
   // CareEvent kinds
-  water:     { title: 'Полив',         tone: 'water', target: { metric: 'soil' },        symbol: '💧' },
-  fertilize: { title: 'Подкормка',     tone: 'info',  target: { metric: 'soil' },        symbol: '🌿' },
-  repot:     { title: 'Пересадка',     tone: 'info',  target: 'home',                    symbol: '🪴' },
-  moved:     { title: 'Перенесли',     tone: 'info',  target: 'home',                    symbol: '↔' },
-  other:     { title: 'Событие',       tone: 'info',  target: 'home',                    symbol: '•' },
+  water:     { title: 'Полив',         tone: 'water', target: { metric: 'soil' },        icon: 'droplet' },
+  fertilize: { title: 'Подкормка',     tone: 'info',  target: { metric: 'soil' },        icon: 'plant' },
+  repot:     { title: 'Пересадка',     tone: 'info',  target: 'home',                    icon: 'plant' },
+  moved:     { title: 'Перенесли',     tone: 'info',  target: 'home',                    icon: 'arrow-right' },
+  other:     { title: 'Событие',       tone: 'info',  target: 'home',                    icon: 'info-circle' },
   // Immediate triggers
-  soil_orange: { title: 'Пора полить',          tone: 'warn',  target: { metric: 'soil' },        symbol: '🔔' },
-  soil_red:    { title: 'Срочно полить',        tone: 'alert', target: { metric: 'soil' },        symbol: '⚠' },
-  temp_orange: { title: 'Близко к границе',     tone: 'warn',  target: { metric: 'temperature' }, symbol: '🌡' },
-  temp_red:    { title: 'Опасная температура',  tone: 'alert', target: { metric: 'temperature' }, symbol: '⚠' },
-  temp_drop:   { title: 'Температура падает',   tone: 'warn',  target: { metric: 'temperature' }, symbol: '↓' },
+  soil_orange: { title: 'Пора полить',          tone: 'warn',  target: { metric: 'soil' },        icon: 'droplet' },
+  soil_red:    { title: 'Срочно полить',        tone: 'alert', target: { metric: 'soil' },        icon: 'droplet' },
+  temp_orange: { title: 'Близко к границе',     tone: 'warn',  target: { metric: 'temperature' }, icon: 'temperature' },
+  temp_red:    { title: 'Опасная температура',  tone: 'alert', target: { metric: 'temperature' }, icon: 'temperature' },
+  temp_drop:   { title: 'Температура падает',   tone: 'warn',  target: { metric: 'temperature' }, icon: 'temperature' },
   // Scheduled triggers
-  light_low:           { title: 'Мало света',         tone: 'warn',     target: { metric: 'light' },    symbol: '☀' },
-  air_dry:             { title: 'Воздух сухой',       tone: 'warn',     target: { metric: 'humidity' }, symbol: '💨' },
-  sensor_silent:       { title: 'Датчик молчит',      tone: 'alert',    target: 'manage',               symbol: '📡' },
-  battery_low_week:    { title: 'Зарядите датчик',    tone: 'warn',     target: 'manage',               symbol: '🔋' },
-  onboarding_place_ok:    { title: 'Место подходит',  tone: 'recovery', target: 'home',                 symbol: '✓' },
-  onboarding_place_alert: { title: 'Место не очень',  tone: 'warn',     target: 'home',                 symbol: '!' },
-  morning_digest:      { title: 'Утренняя сводка',    tone: 'info',     target: 'home',                 symbol: '☼' },
+  light_low:           { title: 'Мало света',         tone: 'warn',     target: { metric: 'light' },    icon: 'sun' },
+  air_dry:             { title: 'Воздух сухой',       tone: 'warn',     target: { metric: 'humidity' }, icon: 'mist' },
+  sensor_silent:       { title: 'Датчик молчит',      tone: 'alert',    target: 'manage',               icon: 'wifi-off' },
+  battery_low_week:    { title: 'Зарядите датчик',    tone: 'warn',     target: 'manage',               icon: 'info-circle' },
+  onboarding_place_ok:    { title: 'Место подходит',  tone: 'recovery', target: 'home',                 icon: 'check' },
+  onboarding_place_alert: { title: 'Место не очень',  tone: 'warn',     target: 'home',                 icon: 'alert-circle' },
+  morning_digest:      { title: 'Утренняя сводка',    tone: 'info',     target: 'home',                 icon: 'sun' },
 };
 
 const TONE_BG: Record<Tone, string> = {
@@ -156,8 +164,8 @@ export function FeedPage() {
                 onClick={() => handleRowClick(it)}
                 className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-neutral-50 dark:hover:bg-neutral-900"
               >
-                <span className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-[15px] ${TONE_BG[cfg.tone]}`}>
-                  {cfg.symbol}
+                <span className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${TONE_BG[cfg.tone]}`}>
+                  <Icon name={cfg.icon} size={18} />
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium truncate">{displayTitle}</div>
