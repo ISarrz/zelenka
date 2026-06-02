@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, type Device, type SettingsUser } from '../api';
 import { isStandalonePWA, unsubscribeFromPush } from '../lib/push';
+import { BackButton } from '../components/BackButton';
 import { InstallPrompt } from '../components/InstallPrompt';
 
 function statusDotClass(s: string | null | undefined): string {
@@ -70,9 +71,9 @@ export function SettingsPage() {
   return (
     <main className="min-h-full p-5 max-w-md mx-auto space-y-6">
       <header className="flex items-center justify-between">
-        <button onClick={() => navigate(-1)} className="text-status-ok text-sm underline">← Назад</button>
+        <BackButton />
         <h1 className="text-lg font-semibold">Настройки</h1>
-        <span className="w-12" />
+        <span className="w-11" />
       </header>
 
       <section className="space-y-1">

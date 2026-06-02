@@ -80,6 +80,7 @@ export function ClaimPage() {
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
               Похоже, ссылка с коробки повреждена. Попробуйте отсканировать QR ещё раз или напишите в поддержку.
             </p>
+            <SupportLink />
           </>
         )}
         {phase === 'taken' && (
@@ -88,6 +89,7 @@ export function ClaimPage() {
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
               Этим датчиком уже пользуется другой аккаунт. Если это ваш — войдите в тот аккаунт, либо обратитесь в поддержку.
             </p>
+            <SupportLink />
           </>
         )}
         {phase === 'error' && (
@@ -96,9 +98,23 @@ export function ClaimPage() {
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
               Что-то пошло не так. Перезагрузите страницу или попробуйте позже.
             </p>
+            <SupportLink />
           </>
         )}
       </div>
     </main>
+  );
+}
+
+function SupportLink() {
+  return (
+    <a
+      href="https://t.me/Sarrz0"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-block mt-2 text-[13px] text-status-ok hover:underline"
+    >
+      Поддержка в Telegram — @Sarrz0
+    </a>
   );
 }

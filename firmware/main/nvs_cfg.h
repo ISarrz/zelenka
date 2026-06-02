@@ -23,3 +23,22 @@ typedef struct {
 void zelenka_cfg_load(zelenka_cfg_t *out);
 bool zelenka_cfg_store(const char *ssid, const char *pass, const char *token, const char *api_url);
 void zelenka_cfg_wipe(void);
+
+// Crash-report log lives in NVS namespace "zelenka_err" — separate from the
+// cfg namespace so it survives `zelenka_cfg_wipe()`. When the device boots
+// after a panic/watchdog/brownout we save the reset_reason here, wipe creds,
+// drop into SoftAP. On the next successful POST after re-provisioning we
+// include this record and then clear it.
+#define ZELENKA_ERR_NAMESPACE "zelenka_err"
+#define ZELENKA_ERR_FW_MAX    32
+
+typedef struct {
+    int  reset_reason;          // esp_reset_reason_t value
+    int  count;                 // crashes since last successful upload
+    char fw_version[ZELENKA_ERR_FW_MAX];
+    bool present;
+} zelenka_err_t;
+
+void zelenka_err_save(int reset_reason, const char *fw_version);
+void zelenka_err_load(zelenka_err_t *out);
+void zelenka_err_clear(void);

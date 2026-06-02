@@ -5,6 +5,7 @@ import {
   type BatteryStatus,
   type Plant,
 } from '../api';
+import { BackButton } from '../components/BackButton';
 import { BatteryIndicator, batteryLabel } from '../components/BatteryIndicator';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
@@ -169,12 +170,8 @@ export function DeviceManagePage() {
   return (
     <main className="min-h-full bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Назад"
-          className="p-1 text-xl"
-        >←</button>
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+        <BackButton />
         <div className="flex-1 text-base font-medium">Датчик {idLabel}</div>
       </div>
 

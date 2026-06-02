@@ -9,6 +9,7 @@ type IconName =
   | 'user'
   | 'chevron-down'
   | 'chevron-up'
+  | 'chevron-left'
   | 'droplet'
   | 'sun'
   | 'temperature'
@@ -72,6 +73,12 @@ export function Icon({ name, size = 18, className, ...rest }: Props) {
       return (
         <svg {...common}>
           <path d="M6 15l6-6 6 6" />
+        </svg>
+      );
+    case 'chevron-left':
+      return (
+        <svg {...common}>
+          <path d="M15 6l-6 6 6 6" />
         </svg>
       );
     case 'droplet':

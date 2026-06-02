@@ -110,6 +110,17 @@ esp_err_t http_post_batch(
         }
         off += snprintf(body + off, BODY_MAX - off, "}");
     }
+    if (meta && meta->last_error) {
+        const http_post_last_error_t *e = meta->last_error;
+        off += snprintf(body + off, BODY_MAX - off,
+                        ",\"lastError\":{\"resetReason\":%d,\"count\":%d",
+                        e->reset_reason, e->count);
+        if (e->firmware_version && e->firmware_version[0]) {
+            off += snprintf(body + off, BODY_MAX - off,
+                            ",\"firmwareVersion\":\"%s\"", e->firmware_version);
+        }
+        off += snprintf(body + off, BODY_MAX - off, "}");
+    }
     off += snprintf(body + off, BODY_MAX - off, "}");
 
     char auth[128];

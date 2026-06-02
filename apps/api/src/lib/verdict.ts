@@ -8,6 +8,11 @@ export interface Reading {
   humidityPct?: number | null;
   lux?: number | null;
   soilMoistureRaw?: number | null;
+  // Pre-computed soil moisture in % (caller mixes device calibration with
+  // the generic fallback). When set, the verdict grades soil in pct space —
+  // matches what the user sees on screen. Falls back to the raw band only
+  // if pct isn't supplied.
+  soilMoisturePct?: number | null;
   // Count of distinct hours in the last 24h where lux was bright enough
   // (≥ BRIGHT_LUX_THRESHOLD). Caller computes this server-side; verdict uses
   // it instead of the instant `lux` whenever both this and minSunHours are
@@ -65,6 +70,19 @@ function gradeSoil(
   return 'ok';
 }
 
+// Preferred grading path when calibration is set — operates in user-facing
+// pct space so the cell colour matches what the user reads on screen.
+// Bands mirror the chart's SOIL_PCT_BAND with an extra alert layer on both
+// extremes.
+function gradeSoilPct(pct: number | null | undefined): Severity {
+  if (pct == null) return 'unknown';
+  if (pct < 10) return 'alert';   // bone dry
+  if (pct < 25) return 'warn';
+  if (pct > 95) return 'alert';   // soaking
+  if (pct > 85) return 'warn';
+  return 'ok';
+}
+
 export function evaluate(
   reading: Reading,
   thresholds: CareThresholds,
@@ -91,7 +109,10 @@ export function evaluate(
     temperatureC: gradeBand(reading.temperatureC, thresholds.temperatureC),
     humidityPct:  gradeBand(reading.humidityPct,  thresholds.humidityPct),
     lux:          luxSeverity,
-    soilMoistureRaw: gradeSoil(reading.soilMoistureRaw, thresholds.soilMoistureRaw),
+    // Prefer pct grading when the caller did the calibration conversion.
+    soilMoistureRaw: reading.soilMoisturePct != null
+      ? gradeSoilPct(reading.soilMoisturePct)
+      : gradeSoil(reading.soilMoistureRaw, thresholds.soilMoistureRaw),
   };
 
   // 48-hour cold-start rule from the design doc — we don't give a verdict

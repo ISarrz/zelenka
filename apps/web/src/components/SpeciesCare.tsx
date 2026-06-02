@@ -80,7 +80,7 @@ function humidityTip(band: Band): { title: string; detail: string } {
   const title = okMin >= 55 ? 'Любит влажный воздух'
     : okMin >= 35 ? 'Умеренная влажность'
       : 'Терпит сухой воздух';
-  return { title, detail: `${okMin}–${okMax}%, опрыскивайте в жару` };
+  return { title, detail: `${okMin}–${okMax}%, опрыскивайте при сухом воздухе` };
 }
 
 function fmtLux(n: number): string {

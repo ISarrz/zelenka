@@ -18,6 +18,7 @@ import {
   type Severity,
   type Verdict,
 } from '../api';
+import { BackButton } from '../components/BackButton';
 
 // Drill-down screens per docs/design-summary.html §metric. Single component
 // dispatches on :metric (soil / light / temperature / humidity) — the layout
@@ -46,10 +47,12 @@ interface MetricConfig {
 const CONFIG: Record<Metric, MetricConfig> = {
   soil: {
     title: 'Почва',
+    // Stored measurement field stays soilMoistureRaw — chart converts on the
+    // fly using device calibration. Threshold band is fixed pct (see SOIL_PCT_BAND).
     measurementKey: 'soilMoistureRaw',
     thresholdKey: 'soilMoistureRaw',
-    formatValue: (n) => ({ value: String(Math.round(n)), unit: 'raw' }),
-    inverted: true,
+    formatValue: (n) => ({ value: `${n}`, unit: '%' }),
+    inverted: false,
     alertTone: 'warning',
     bandLabels: ['сухо', 'норма', 'влажно'],
     showCareEvents: true,
@@ -97,6 +100,21 @@ const METRIC_PARAM: Record<string, Metric> = {
 
 type Range = 7 | 30;
 
+// Fixed pct band used in place of the raw soil band for display purposes.
+// Mirrors PlantCard's choice — comfortable 30-70 %, warn 15-90 %.
+const SOIL_PCT_BAND = { okMin: 30, okMax: 70, warnMin: 15, warnMax: 90 };
+
+const GENERIC_SOIL_DRY = 2800;
+const GENERIC_SOIL_WET = 1300;
+function rawToSoilPct(raw: number | null | undefined, dry: number | null, wet: number | null): number | null {
+  if (raw == null) return null;
+  const d = dry ?? GENERIC_SOIL_DRY;
+  const w = wet ?? GENERIC_SOIL_WET;
+  if (d <= w) return null;
+  const pct = ((d - raw) / (d - w)) * 100;
+  return Math.max(0, Math.min(100, Math.round(pct * 10) / 10));
+}
+
 export function MetricDetailPage() {
   const navigate = useNavigate();
   const { id, metric } = useParams<{ id: string; metric: string }>();
@@ -109,6 +127,8 @@ export function MetricDetailPage() {
     verdict: Verdict | null;
     thresholds: Record<string, unknown> | null;
     plantId: string | null;
+    soilDryRaw: number | null;
+    soilWetRaw: number | null;
   } | null>(null);
   const [samples, setSamples] = useState<Measurement[]>([]);
   const [events, setEvents] = useState<CareEvent[]>([]);
@@ -128,6 +148,8 @@ export function MetricDetailPage() {
           verdict: l.verdict,
           thresholds: (l as unknown as { thresholds: Record<string, unknown> }).thresholds,
           plantId: l.plant?.id ?? null,
+          soilDryRaw: l.device.soilDryRaw ?? null,
+          soilWetRaw: l.device.soilWetRaw ?? null,
         });
       } catch (err) {
         const status = (err as { status?: number }).status;
@@ -181,10 +203,18 @@ export function MetricDetailPage() {
     );
   }
 
-  const rawValue = latest.measurement?.[cfg.measurementKey] ?? null;
+  const rawSample = latest.measurement?.[cfg.measurementKey] ?? null;
+  // For soil we show pct (live raw + device calibration); other metrics
+  // pass through unchanged.
+  const rawValue = m === 'soil'
+    ? rawToSoilPct(rawSample, latest.soilDryRaw, latest.soilWetRaw)
+    : rawSample;
   const severity: Severity | undefined =
     latest.verdict?.perParam[cfg.measurementKey === 'soilMoistureRaw' ? 'soilMoistureRaw' : cfg.measurementKey] ?? undefined;
-  const band = (latest.thresholds?.[cfg.thresholdKey] as Record<string, number> | undefined) ?? null;
+  // Bands also change shape for soil: pct domain (0–100), fixed comfort window.
+  const band: Record<string, number> | null = m === 'soil'
+    ? SOIL_PCT_BAND
+    : ((latest.thresholds?.[cfg.thresholdKey] as Record<string, number> | undefined) ?? null);
   const status = rawValue == null ? null : statusText(m!, rawValue, severity, band, cfg.inverted);
   const action = rawValue == null ? null : actionText(m!, severity);
   const contextLine = computeContext(m!, latest.measurement, events, samples);
@@ -193,11 +223,7 @@ export function MetricDetailPage() {
     <main className="min-h-full bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Назад"
-          className="p-1 text-xl"
-        >←</button>
+        <BackButton />
         <div className="flex-1">
           <div className="text-base font-medium leading-tight">{cfg.title}</div>
           <div className="text-xs text-neutral-500">{latest.plantName ?? 'без растения'}</div>
@@ -261,6 +287,8 @@ export function MetricDetailPage() {
           band={band}
           inverted={cfg.inverted}
           events={cfg.showCareEvents ? events : []}
+          metric={m!}
+          soilCal={{ dry: latest.soilDryRaw, wet: latest.soilWetRaw }}
         />
       </div>
 
@@ -348,21 +376,35 @@ function MetricChart({
   band,
   inverted,
   events,
+  metric,
+  soilCal,
 }: {
   samples: Measurement[];
   dataKey: MetricConfig['measurementKey'];
   band: Record<string, number> | null;
   inverted: boolean;
   events: CareEvent[];
+  metric: Metric;
+  soilCal: { dry: number | null; wet: number | null };
 }) {
   const data = useMemo(
-    () => samples.map((s) => ({ t: new Date(s.measuredAt).getTime(), [dataKey]: s[dataKey] })),
-    [samples, dataKey],
+    () => samples.map((s) => ({
+      t: new Date(s.measuredAt).getTime(),
+      // Soil samples carry raw on the wire — convert per-point to pct for
+      // display. Other metrics pass through.
+      [dataKey]: metric === 'soil'
+        ? rawToSoilPct(s.soilMoistureRaw, soilCal.dry, soilCal.wet)
+        : s[dataKey],
+    })),
+    [samples, dataKey, metric, soilCal.dry, soilCal.wet],
   );
 
-  // Ok-band reference area.
+  // Ok-band + warn-band reference areas. For soil after conversion the band
+  // is pct-shaped (okMin/okMax/warnMin/warnMax) like the others.
   let okFrom: number | null = null;
   let okTo: number | null = null;
+  let warnFrom: number | null = null;
+  let warnTo: number | null = null;
   if (band) {
     if (inverted) {
       okFrom = band.wet ?? null;
@@ -370,6 +412,8 @@ function MetricChart({
     } else {
       okFrom = band.okMin ?? null;
       okTo = band.okMax ?? null;
+      warnFrom = band.warnMin ?? null;
+      warnTo = band.warnMax ?? null;
     }
   }
 
@@ -408,11 +452,25 @@ function MetricChart({
           <YAxis
             fontSize={10}
             width={32}
-            domain={['auto', 'auto']}
+            // Pin y-domain to always include the band — same trick used on
+            // PlantCard so the green/yellow zones never fall outside the view.
+            domain={[
+              (dataMin: number) => Math.floor(Math.min(
+                dataMin,
+                warnFrom ?? okFrom ?? dataMin,
+              )),
+              (dataMax: number) => Math.ceil(Math.max(
+                dataMax,
+                warnTo ?? okTo ?? dataMax,
+              )),
+            ]}
             reversed={inverted}
           />
+          {warnFrom != null && warnTo != null && (
+            <ReferenceArea y1={warnFrom} y2={warnTo} fill="rgb(234 179 8)" fillOpacity={0.1} />
+          )}
           {okFrom != null && okTo != null && (
-            <ReferenceArea y1={okFrom} y2={okTo} fill="rgb(34 197 94)" fillOpacity={0.1} />
+            <ReferenceArea y1={okFrom} y2={okTo} fill="rgb(34 197 94)" fillOpacity={0.18} />
           )}
           <Tooltip
             labelFormatter={(v) => new Date(Number(v)).toLocaleString('ru-RU')}
@@ -421,6 +479,17 @@ function MetricChart({
               if (n == null) return '—';
               return Number.isInteger(n) ? `${n}` : n.toFixed(1);
             }}
+            // Dark-mode aware tooltip. Default recharts tooltip is white-on-
+            // light which is unreadable on our dark background.
+            contentStyle={{
+              background: 'rgb(23 23 23)',
+              border: '1px solid rgb(64 64 64)',
+              borderRadius: 8,
+              color: 'rgb(245 245 245)',
+              fontSize: 12,
+            }}
+            labelStyle={{ color: 'rgb(163 163 163)' }}
+            itemStyle={{ color: 'rgb(245 245 245)' }}
           />
           <Line
             type="monotone"
@@ -486,8 +555,8 @@ function actionText(m: Metric, sev: Severity | undefined): {
   switch (m) {
     case 'soil':
       return sev === 'alert'
-        ? { headline: 'Полейте 200–250 мл воды как можно скорее.', body: 'Земля пересохла — корни не получают влагу. Холодную или ледяную воду не используйте.', tone: 'warning' }
-        : { headline: 'Полейте 150–200 мл тёплой воды.', body: 'Земля подсыхает. Лучше полить заранее, чем дожидаться пересыхания.', tone: 'warning' };
+        ? { headline: 'Полейте как можно скорее.', body: 'Земля пересохла — корни не получают влагу. Холодную или ледяную воду не используйте.', tone: 'warning' }
+        : { headline: 'Полейте тёплой водой.', body: 'Земля подсыхает. Лучше полить заранее, чем дожидаться пересыхания.', tone: 'warning' };
     case 'light':
       return sev === 'alert'
         ? { headline: 'Переставьте ближе к окну.', body: 'Света критически мало. Восточное или южное окно подойдёт.', tone: 'warning' }
@@ -498,8 +567,8 @@ function actionText(m: Metric, sev: Severity | undefined): {
         : { headline: 'Контролируйте температуру.', body: 'Близко к границе нормы. Сквозняк или близость к окну могут утянуть в опасную зону.', tone: 'warning' };
     case 'humidity':
       return sev === 'alert'
-        ? { headline: 'Опрыскивайте 2–3 раза в день.', body: 'Воздух критически сухой. Поставьте увлажнитель или поддон с водой рядом.', tone: 'warning' }
-        : { headline: 'Опрыскивайте 2–3 раза в неделю.', body: 'Отопление сушит воздух — это типично для зимы.', tone: 'warning' };
+        ? { headline: 'Регулярно опрыскивайте.', body: 'Воздух критически сухой.', tone: 'warning' }
+        : { headline: 'Регулярно опрыскивайте.', body: 'Воздух суше нормы для этого вида.', tone: 'warning' };
   }
 }
 

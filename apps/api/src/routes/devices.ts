@@ -122,7 +122,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       where: { id },
       data: {
         ...(parsed.data.dryRaw !== undefined ? { soilDryRaw: parsed.data.dryRaw } : {}),
-        ...(parsed.data.wetRaw !== undefined ? { soilWetRaw: parsed.data.wetRaw } : {}),
+        ...(parsed.data.wetRaw !== undefined ? { soilWetRaw: parsed.data.wetRaw, soilWetCalibratedAt: new Date() } : {}),
       },
     });
     return { device: updated };
@@ -327,6 +327,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
             lux: latest.lux,
             hoursBrightToday,
             soilMoistureRaw: latest.soilMoistureRaw,
+            soilMoisturePct: latest.soilMoisturePct ?? soilPctFromRaw(latest.soilMoistureRaw, device),
           },
           thresholds,
           device.plant?.identifiedAt ?? null,
@@ -348,6 +349,14 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       ? { ...latest, soilMoisturePct: soilPctFromRaw(latest.soilMoistureRaw, device) }
       : latest;
 
+    // Most recent watering — for the home-screen "Полив N дн назад" chip.
+    // Considers both manual and auto-detected entries, picks the latest.
+    const lastWatering = device.plant ? await prisma.careEvent.findFirst({
+      where: { plantId: device.plant.id, kind: 'water' },
+      orderBy: { occurredAt: 'desc' },
+      select: { occurredAt: true },
+    }) : null;
+
     return {
       device: {
         id: device.id,
@@ -359,6 +368,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
         soilWetRaw: device.soilWetRaw,
       },
       plant: slimmedPlant,
+      lastWateringAt: lastWatering?.occurredAt?.toISOString() ?? null,
       measurement: measurementForWire,
       verdict,
       thresholds,

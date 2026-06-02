@@ -173,6 +173,7 @@ export const api = {
         soilWetRaw: number | null;
       };
       plant: Plant | null;
+      lastWateringAt: string | null;
       measurement: Measurement | null;
       verdict: Verdict | null;
       thresholds: Record<string, Record<string, number> | undefined>;

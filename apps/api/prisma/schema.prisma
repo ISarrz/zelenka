@@ -89,6 +89,10 @@ model Device {
   // incomplete.
   soilDryRaw  Int?
   soilWetRaw  Int?
+  // When the wet anchor was last (re)set. Auto-care detection skips a short
+  // window after this — during calibration the user dips the probe in water,
+  // which the detector would otherwise misread as an instant watering.
+  soilWetCalibratedAt DateTime?
 
   // Last-known firmware version + Wi-Fi signal strength reported on the most
   // recent POST. Surfaced in the Управление датчиком screen.

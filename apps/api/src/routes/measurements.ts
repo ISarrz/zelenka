@@ -43,10 +43,27 @@ const DeviceMeta = z.object({
   wifiRssi: z.number().int().min(-150).max(0).optional(),
 });
 
+const LastError = z.object({
+  resetReason: z.number().int(),
+  count: z.number().int().min(1),
+  firmwareVersion: z.string().min(1).max(32).optional(),
+});
+
 const Batch = z.object({
   samples: z.array(Sample).min(1).max(64),
   device: DeviceMeta.optional(),
+  lastError: LastError.optional(),
 });
+
+// esp_reset_reason_t code → label. Keep aligned with ESP-IDF: panic = 7,
+// int_wdt = 8, task_wdt = 9, wdt = 10, brownout = 15.
+const RESET_REASON_LABEL: Record<number, string> = {
+  7: 'PANIC',
+  8: 'INT_WDT',
+  9: 'TASK_WDT',
+  10: 'WDT',
+  15: 'BROWNOUT',
+};
 
 export async function measurementRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/device/measurements', { preHandler: requireDevice }, async (req, reply) => {
@@ -64,6 +81,14 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
       }
       samples = parsed.data.samples;
       deviceMeta = parsed.data.device;
+      if (parsed.data.lastError) {
+        const e = parsed.data.lastError;
+        const label = RESET_REASON_LABEL[e.resetReason] ?? `code_${e.resetReason}`;
+        req.log.warn(
+          { deviceId: req.deviceId, resetReason: e.resetReason, label, count: e.count, firmwareVersion: e.firmwareVersion },
+          `device ${req.deviceId} reported crash: ${label} ×${e.count}${e.firmwareVersion ? ` on fw ${e.firmwareVersion}` : ''}`,
+        );
+      }
     } else {
       const parsed = Sample.safeParse(body);
       if (!parsed.success) {
@@ -178,6 +203,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
           lux: last.lux ?? null,
           hoursBrightToday,
           soilMoistureRaw: last.soilMoistureRaw ?? null,
+          soilMoisturePct: last.soilMoisturePct ?? soilPctFromRaw(last.soilMoistureRaw ?? null, cal),
         },
         thresholds,
         plant.identifiedAt,
@@ -235,12 +261,14 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
         data: { lastRingStatus: verdict.ring },
       });
 
-      // Auto-detect care events (currently: watering via soil-moisture drop).
+      // Auto-detect care events (currently: watering via pct rise vs the
+      // trailing-hour minimum).
       await detectAutoEvents({
         plantId: plant.id,
-        prevSoilRaw: prevMeasurement?.soilMoistureRaw ?? null,
-        newSoilRaw: last.soilMoistureRaw ?? null,
+        deviceId: device.id,
+        newSoilPct: last.soilMoisturePct ?? soilPctFromRaw(last.soilMoistureRaw ?? null, cal),
         occurredAt: measuredAt,
+        wetCalibratedAt: device.soilWetCalibratedAt,
       });
     }
 

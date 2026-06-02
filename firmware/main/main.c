@@ -1,11 +1,11 @@
 // Zelenka sensor — Sprint 2 firmware.
 //
 // Cycle:
-//   power-on  ->  touch held 3s? -> wipe NVS -> reboot
-//   no cfg?   ->  SoftAP + captive portal + form  -> save NVS + reboot
-//   cfg ok    ->  sample -> push to RTC-RAM batch
-//                 if batch full: wifi up, NTP, POST batch, clear, sleep
-//                 else:                                  sleep
+//   no cfg?           ->  SoftAP + captive portal + form -> save NVS + reboot
+//   cfg + wifi ok     ->  sample -> push to RTC-RAM batch
+//                         if batch full: wifi up, NTP, POST batch, clear, sleep
+//                         else:                                         sleep
+//   wifi failing N×   ->  wipe NVS -> reboot into SoftAP
 //
 // All inter-sample time is spent in deep sleep, so quiescent current dominates
 // average power. With 6 samples/hour and ~4s awake per sample, the chip is
@@ -35,8 +35,13 @@
 #include "ota.h"
 #include "provisioning.h"
 #include "sensors.h"
-#include "touch.h"
 #include "wifi.h"
+
+// Consecutive Wi-Fi connect failures before we conclude the stored creds are
+// dead (wrong SSID/password, network gone) and drop back into provisioning.
+// At normal cadence (~1 connect/h) this is ~10 hours of pain; during rapid
+// setup (1 connect/10 s) it's ~100 s. Either way: user noticed, intentional.
+#define WIFI_FAIL_LIMIT 10
 
 static const char *TAG = "zelenka";
 
@@ -50,6 +55,7 @@ RTC_DATA_ATTR static bool             did_initial_burst = false;
 // burst. Used to keep the device in a "rapid setup" cadence for the first
 // hour so the user can see live updates while they place the sensor.
 RTC_DATA_ATTR static int64_t          provisioned_at_epoch = 0;
+RTC_DATA_ATTR static int              wifi_fail_streak     = 0;
 
 // First hour after provisioning: take a sample every 10 s and POST every
 // minute (batch of 6). After that, drop back to the production cadence
@@ -95,19 +101,16 @@ static void init_nvs(void) {
 static void enter_deep_sleep(int sec) {
     ESP_LOGI(TAG, "sleeping %d s (batch %d/%d)", sec, batch_count, CONFIG_ZELENKA_BATCH_SIZE);
     esp_sleep_enable_timer_wakeup((int64_t)sec * 1000000LL);
-    // Wake also on a touch press so the user can re-enter provisioning by
-    // holding the pad ~5 s. GPIO5 (TTP223 DO) goes HIGH on touch.
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << TOUCH_GPIO, ESP_GPIO_WAKEUP_GPIO_HIGH);
     esp_deep_sleep_start();
 }
 
-// Sleep indefinitely (no timer), waking only on a touch press. Used after
-// the provisioning AP times out — the device is otherwise useless until
-// the user re-arms it.
-static void enter_deep_sleep_touch_only(void) {
-    ESP_LOGI(TAG, "deep sleep, touch-only wake");
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << TOUCH_GPIO, ESP_GPIO_WAKEUP_GPIO_HIGH);
-    esp_deep_sleep_start();
+// Wipe stored Wi-Fi creds and reboot. The next boot will see no cfg and drop
+// into the SoftAP captive portal automatically.
+static void drop_to_provisioning(const char *reason) {
+    ESP_LOGW(TAG, "wifi failed %d×, dropping to provisioning (%s)", wifi_fail_streak, reason);
+    wifi_fail_streak = 0;
+    zelenka_cfg_wipe();
+    esp_restart();
 }
 
 // One "logical sample" = mean of 3 raw reads ~100ms apart. Smooths out the
@@ -161,6 +164,8 @@ static void sample_averaged(sensor_reading_t *out) {
 static http_post_meta_t collect_post_meta(void) {
     static char fw_version[32];
     static int  wifi_rssi;
+    static zelenka_err_t          err_record;
+    static http_post_last_error_t err_payload;
     const esp_app_desc_t *desc = esp_app_get_description();
     snprintf(fw_version, sizeof(fw_version), "%s", desc ? desc->version : "unknown");
 
@@ -168,9 +173,21 @@ static http_post_meta_t collect_post_meta(void) {
     const bool got_rssi = esp_wifi_sta_get_ap_info(&ap) == ESP_OK;
     if (got_rssi) wifi_rssi = ap.rssi;
 
+    zelenka_err_load(&err_record);
+    const http_post_last_error_t *err_ptr = NULL;
+    if (err_record.present) {
+        err_payload = (http_post_last_error_t){
+            .reset_reason     = err_record.reset_reason,
+            .count            = err_record.count,
+            .firmware_version = err_record.fw_version,
+        };
+        err_ptr = &err_payload;
+    }
+
     return (http_post_meta_t){
         .firmware_version = fw_version,
         .wifi_rssi        = got_rssi ? &wifi_rssi : NULL,
+        .last_error       = err_ptr,
     };
 }
 
@@ -224,50 +241,31 @@ void app_main(void) {
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     zelenka_led_init();
-    touch_init();
+    zelenka_led_set(ZELENKA_LED_BOOT);
 
-    // Warm touch-wake: device came out of deep sleep because the user is
-    // pressing the pad. Hold ≥5 s → wipe Wi-Fi config and reboot into the
-    // captive portal. Released early → fall through into the normal cycle
-    // so we don't lose the sample.
-    esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
-    if (wake == ESP_SLEEP_WAKEUP_GPIO) {
-        ESP_LOGW(TAG, "touch wake — checking 5 s hold");
-        zelenka_led_set(ZELENKA_LED_SENDING); // fast blink during hold check
-        if (touch_held_for(TOUCH_REPROV_MS)) {
-            ESP_LOGW(TAG, "touch re-provision: wiping config and rebooting");
-            zelenka_led_set(ZELENKA_LED_OK);
-            zelenka_cfg_wipe();
-            vTaskDelay(pdMS_TO_TICKS(200));
-            esp_restart();
-        }
-        zelenka_led_set(ZELENKA_LED_OFF);
+    // Crash report: if we got here from a panic / watchdog / brownout, save
+    // it to a separate NVS namespace (survives cfg wipe), then wipe Wi-Fi
+    // creds so we drop into SoftAP automatically. The user re-provisions;
+    // the first POST after reconnect carries the saved error and clears it.
+    esp_reset_reason_t reason = esp_reset_reason();
+    const esp_app_desc_t *boot_desc = esp_app_get_description();
+    const char *boot_fw = boot_desc ? boot_desc->version : "";
+    if (reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT ||
+        reason == ESP_RST_TASK_WDT || reason == ESP_RST_WDT ||
+        reason == ESP_RST_BROWNOUT) {
+        ESP_LOGW(TAG, "crash boot (reason=%d) — saving error, dropping to provisioning", (int)reason);
+        zelenka_err_save((int)reason, boot_fw);
+        zelenka_cfg_wipe();
+        esp_restart();
     }
 
-    // Factory reset gesture — only on a real power-on. USB resets (DTR pulse
-    // from the host while debugging) and software restarts after captive-portal
-    // save must NOT clear NVS, or we'd never escape provisioning.
-    esp_reset_reason_t reason = esp_reset_reason();
+    // Fresh power cycle: reset RTC-RAM transients so the smoke-test burst
+    // runs again. Soft restarts (e.g. after provisioning save) keep state.
     if (reason == ESP_RST_POWERON) {
-        // TTP223 self-calibration: the IC samples whatever capacitance is on
-        // the pad for ~1.5 s after power-up and bakes it into its baseline.
-        // If the user is touching during this window the IC inverts — we'd
-        // never see a real press. So we keep the LED neutral WHITE for the
-        // cal window, then flip to RED to invite the gesture.
-        zelenka_led_set(ZELENKA_LED_BOOT);
-        vTaskDelay(pdMS_TO_TICKS(TTP223_CAL_MS));
-        zelenka_led_set(ZELENKA_LED_ERROR); // red = "press touch now to factory-reset"
-        if (touch_was_held_for_factory_reset()) {
-            ESP_LOGW(TAG, "factory reset: wiping NVS");
-            zelenka_cfg_wipe();
-            esp_restart();
-        }
-        zelenka_led_set(ZELENKA_LED_BOOT);
-        // Fresh power cycle: re-run the smoke-test burst so the user can plug
-        // the sensor back in and immediately see updated numbers in the PWA.
         did_initial_burst = false;
         batch_count = 0;
         time_synced = false;
+        wifi_fail_streak = 0;
     }
 
     zelenka_cfg_t cfg;
@@ -277,11 +275,9 @@ void app_main(void) {
         ESP_LOGI(TAG, "no provisioning — entering SoftAP captive portal");
         zelenka_led_set(ZELENKA_LED_WIFI);
         provisioning_run();
-        // Reached only on PROVISIONING_TIMEOUT_MS expiry (success path calls
-        // esp_restart). Go dark and sleep until the user presses the pad —
-        // they re-arm provisioning with a 5-s touch hold.
-        zelenka_led_set(ZELENKA_LED_OFF);
-        enter_deep_sleep_touch_only();
+        // provisioning_run never returns: a successful form submit calls
+        // esp_restart(); otherwise it stays in SoftAP forever.
+        esp_restart();
     }
 
     sensors_init();
@@ -305,8 +301,11 @@ void app_main(void) {
         ESP_LOGI(TAG, "initial burst: 6 samples * 10s");
         zelenka_led_set(ZELENKA_LED_WIFI);
         bool wifi_ok = (wifi_connect_blocking(cfg.wifi_ssid, cfg.wifi_password) == ESP_OK);
-        if (wifi_ok && !time_synced) {
-            time_synced = sync_ntp_blocking();
+        if (wifi_ok) {
+            wifi_fail_streak = 0;
+            if (!time_synced) time_synced = sync_ntp_blocking();
+        } else {
+            if (++wifi_fail_streak >= WIFI_FAIL_LIMIT) drop_to_provisioning("burst");
         }
 
         batch_count = 0;
@@ -335,6 +334,7 @@ void app_main(void) {
             zelenka_led_set(err == ESP_OK ? ZELENKA_LED_OK : ZELENKA_LED_ERROR);
             if (err == ESP_OK) {
                 batch_count = 0;
+                zelenka_err_clear();
                 flush_offline_pending(&cfg);
                 ota_mark_valid_if_pending();
                 char base[64];
@@ -370,6 +370,7 @@ void app_main(void) {
         if (batch_count >= current_batch_target()) {
             zelenka_led_set(ZELENKA_LED_WIFI);
             if (wifi_connect_blocking(cfg.wifi_ssid, cfg.wifi_password) == ESP_OK) {
+                wifi_fail_streak = 0;
                 if (!time_synced) time_synced = sync_ntp_blocking();
                 if (time_synced) {
                     int64_t now = (int64_t)time(NULL);
@@ -389,6 +390,7 @@ void app_main(void) {
                 handle_factory_reset_if_requested(factory_reset);
                 if (err == ESP_OK) {
                     batch_count = 0;
+                    zelenka_err_clear();
                     zelenka_led_set(ZELENKA_LED_OK);
                     flush_offline_pending(&cfg);
                     ota_mark_valid_if_pending();
@@ -407,6 +409,7 @@ void app_main(void) {
                 batch_count = 0;
                 zelenka_led_set(ZELENKA_LED_ERROR);
                 vTaskDelay(pdMS_TO_TICKS(600));
+                if (++wifi_fail_streak >= WIFI_FAIL_LIMIT) drop_to_provisioning("cycle");
             }
         }
     }

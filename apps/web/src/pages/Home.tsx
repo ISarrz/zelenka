@@ -13,7 +13,6 @@ import {
 } from '../api';
 import { BatteryIndicator, batteryLabel } from '../components/BatteryIndicator';
 import { BottomNav } from '../components/BottomNav';
-import { DragHandle } from '../components/DragHandle';
 import { Icon } from '../components/Icon';
 import { PlantArt } from '../components/PlantArt';
 import {
@@ -64,6 +63,9 @@ export function HomePage() {
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [battery, setBattery] = useState<BatteryStatus | null>(null);
+  const [lastWateringAt, setLastWateringAt] = useState<string | null>(null);
+  const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
+  const [wifiRssi, setWifiRssi] = useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [installPromptOpen, setInstallPromptOpen] = useState(() => shouldShowInstall() !== null);
@@ -153,6 +155,9 @@ export function HomePage() {
         setMeasurement(latest.measurement);
         setVerdict(latest.verdict);
         setBattery(latest.battery);
+        setLastWateringAt(latest.lastWateringAt);
+        setLastSeenAt(latest.device.lastSeenAt);
+        setWifiRssi(latest.device.wifiRssi);
         setStatus(latest.measurement ? 'ready' : 'no-data');
       } catch (err) {
         const code = (err as { status?: number }).status;
@@ -185,9 +190,20 @@ export function HomePage() {
   const device = devices.find((d) => d.id === activeId) ?? devices[0];
   const plant: Plant | null = device.plant ?? null;
   const rawRing: RingStatus = verdict?.ring ?? 'ok';
-  // Cold-start mode disabled by product decision — fold into ok visually.
-  // Per-cell severity stays honest so the user still sees real signals.
-  const ringStatus: RingStatus = rawRing === 'cold' ? 'ok' : rawRing;
+  // Cold-start mode disabled by product decision — fold into ok visually,
+  // BUT escalate to alert if any per-cell is alert. Otherwise critical
+  // conditions during the first 48 h hide behind a green ring.
+  const anyAlert = verdict?.perParam
+    ? Object.values(verdict.perParam).some((s) => s === 'alert')
+    : false;
+  const anyWarn = verdict?.perParam
+    ? Object.values(verdict.perParam).some((s) => s === 'warn')
+    : false;
+  const ringStatus: RingStatus = anyAlert
+    ? 'alert'
+    : rawRing === 'cold'
+      ? (anyWarn ? 'warn' : 'ok')
+      : rawRing;
   const title = plant?.name ?? device.name;
   const headline = headlineFor(ringStatus, verdict);
   const lowBattery = battery && (battery.estimate === 'low' || battery.estimate === 'critical');
@@ -227,20 +243,22 @@ export function HomePage() {
         onOpenCharts={() => navigate(`/devices/${device.id}`)}
       />
 
+      <div className="flex-1 min-h-[16px]" />
+
       <Grid
         m={measurement}
         v={verdict}
         deviceId={device.id}
       />
 
-      <div className="flex-1" />
+      <QuickStats
+        lastWateringAt={lastWateringAt}
+        lastSeenAt={lastSeenAt}
+        battery={battery}
+        wifiRssi={wifiRssi}
+      />
 
       <div className="flex flex-col items-center gap-3 px-4">
-        <DragHandle
-          label="Графики и журнал"
-          onActivate={() => navigate(`/devices/${device.id}`)}
-        />
-
         {!plant && (
           <button
             onClick={() => navigate(`/devices/${device.id}/identify`)}
@@ -351,9 +369,9 @@ function Header({
       <button
         onClick={onAdd}
         aria-label="Добавить датчик"
-        className="w-8 h-8 rounded-full border border-neutral-200 dark:border-neutral-800 flex items-center justify-center text-neutral-500 dark:text-neutral-400 active:bg-neutral-100 dark:active:bg-neutral-900"
+        className="w-11 h-11 rounded-full border border-neutral-200 dark:border-neutral-800 flex items-center justify-center text-neutral-500 dark:text-neutral-400 active:bg-neutral-100 dark:active:bg-neutral-900"
       >
-        <Icon name="plus" size={18} />
+        <Icon name="plus" size={22} />
       </button>
       <div className="flex items-center gap-1 px-2 py-1">
         <button
@@ -372,9 +390,9 @@ function Header({
       <button
         onClick={onProfile}
         aria-label="Профиль"
-        className="w-8 h-8 rounded-full border border-neutral-200 dark:border-neutral-800 flex items-center justify-center text-neutral-500 dark:text-neutral-400 active:bg-neutral-100 dark:active:bg-neutral-900"
+        className="w-11 h-11 rounded-full border border-neutral-200 dark:border-neutral-800 flex items-center justify-center text-neutral-500 dark:text-neutral-400 active:bg-neutral-100 dark:active:bg-neutral-900"
       >
-        <Icon name="user" size={18} />
+        <Icon name="user" size={22} />
       </button>
     </div>
   );
@@ -391,7 +409,7 @@ function Hero({
 }) {
   const idx = devices.findIndex((d) => d.id === activeId);
   return (
-    <div className="flex flex-col items-center px-4 pt-2 pb-1">
+    <div className="flex flex-col items-center px-4 pt-6 pb-3">
       <button
         onClick={onOpenCharts}
         aria-label="Графики и журнал"
@@ -399,7 +417,7 @@ function Hero({
       >
         <Ring status={ringStatus} />
       </button>
-      <div className="mt-3 text-lg font-medium text-neutral-900 dark:text-neutral-100">
+      <div className="mt-5 text-xl font-medium text-neutral-900 dark:text-neutral-100">
         {headline}
       </div>
       {devices.length > 1 && (
@@ -420,15 +438,76 @@ function Hero({
   );
 }
 
+function QuickStats({
+  lastWateringAt, lastSeenAt, battery, wifiRssi,
+}: {
+  lastWateringAt: string | null;
+  lastSeenAt: string | null;
+  battery: BatteryStatus | null;
+  wifiRssi: number | null;
+}) {
+  return (
+    <div className="px-4 pt-3 pb-2 grid grid-cols-2 gap-x-3 gap-y-1.5 justify-items-center">
+      <StatChip icon="droplet"     label="Полив"   value={formatAgoShort(lastWateringAt, 'never')} />
+      <StatChip icon="broadcast"   label="Замер"   value={formatAgoShort(lastSeenAt, 'no-data')} />
+      <StatChip icon="info-circle" label="Батарея" value={battery ? batteryQuickLabel(battery) : '—'} />
+      <StatChip icon="wifi"        label="Wi-Fi"   value={wifiRssi != null ? wifiQuality(wifiRssi) : '—'} />
+    </div>
+  );
+}
+
+function wifiQuality(rssi: number): string {
+  if (rssi >= -50) return 'отлично';
+  if (rssi >= -65) return 'хорошо';
+  if (rssi >= -75) return 'средне';
+  if (rssi >= -85) return 'слабо';
+  return 'плохо';
+}
+
+function StatChip({ icon, label, value }: {
+  icon: 'droplet' | 'broadcast' | 'info-circle' | 'wifi';
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
+      <Icon name={icon} size={14} className="shrink-0" />
+      <span className="shrink-0">{label}</span>
+      <span className="text-neutral-900 dark:text-neutral-100 font-medium tabular-nums truncate">{value}</span>
+    </div>
+  );
+}
+
+// Compact form for the inline chips above the sensor grid: "5 мин", "2 ч",
+// "3 д" — no trailing "назад" so three chips fit on a phone width.
+function formatAgoShort(iso: string | null, missingText: 'never' | 'no-data'): string {
+  if (!iso) return missingText === 'never' ? '—' : '—';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return 'сейчас';
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 60) return `${mins} мин`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} ч`;
+  const days = Math.floor(hours / 24);
+  return `${days} д`;
+}
+
+function batteryQuickLabel(b: BatteryStatus): string {
+  // Map voltage onto a 0-100 % bar — 3.0 V is empty, 4.2 V is full. We keep
+  // the qualitative tier as suffix for context (low / mid / full).
+  const pct = Math.max(0, Math.min(100, Math.round(((b.voltage - 3.0) / 1.2) * 100)));
+  return `${pct}%`;
+}
+
 function Ring({ status }: { status: RingStatus }) {
   return (
     <div
-      className="w-36 h-36 rounded-full p-[7px] flex items-center justify-center"
+      className="w-48 h-48 rounded-full p-[8px] flex items-center justify-center"
       style={{ backgroundColor: RING_FILL[status] }}
       aria-label={`Состояние: ${status}`}
     >
       <div className="w-full h-full rounded-full bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center">
-        <PlantArt className="w-[68px] h-auto text-neutral-700 dark:text-neutral-300" />
+        <PlantArt className="w-[92px] h-auto text-neutral-700 dark:text-neutral-300" />
       </div>
     </div>
   );
@@ -444,7 +523,7 @@ function Grid({
 }) {
   const navigate = useNavigate();
   return (
-    <div className="grid grid-cols-2 gap-2 px-4 pt-3 pb-4">
+    <div className="grid grid-cols-2 gap-3 px-4 pt-3 pb-3">
       <Cell
         icon="droplet" label="Почва"
         value={m?.soilMoisturePct ?? m?.soilMoistureRaw}
@@ -499,17 +578,17 @@ function Cell({
   return (
     <button
       onClick={onClick}
-      className="rounded-xl bg-neutral-50 dark:bg-neutral-900 px-3 py-2.5 text-left active:scale-[0.98] transition-transform border-[1.5px]"
+      className="rounded-2xl bg-neutral-50 dark:bg-neutral-900 px-4 py-4 text-left active:scale-[0.98] transition-transform border-[1.5px]"
       style={{ borderColor }}
     >
-      <div className="flex items-center gap-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
-        <Icon name={icon} size={15} style={{ color: iconColor }} />
+      <div className="flex items-center gap-2 text-[13px] text-neutral-500 dark:text-neutral-400">
+        <Icon name={icon} size={18} style={{ color: iconColor }} />
         <span>{label}</span>
       </div>
-      <div className="mt-1 flex items-baseline gap-1">
-        <span className="text-[17px] font-medium tabular-nums">{display}</span>
+      <div className="mt-2 flex items-baseline gap-1">
+        <span className="text-[22px] font-medium tabular-nums">{display}</span>
         {value != null && unit && (
-          <span className="text-[12px] text-neutral-500 dark:text-neutral-400">{unit}</span>
+          <span className="text-[13px] text-neutral-500 dark:text-neutral-400">{unit}</span>
         )}
       </div>
     </button>

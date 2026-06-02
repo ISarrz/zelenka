@@ -342,9 +342,14 @@ function ErrorFrame({ onRetry }: { onRetry: () => void }) {
       >
         Попробовать снова
       </button>
-      <button className="w-full text-center py-1 text-[13px] text-neutral-500 dark:text-neutral-400">
-        Написать в поддержку
-      </button>
+      <a
+        href="https://t.me/Sarrz0"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="w-full text-center py-1 text-[13px] text-neutral-500 dark:text-neutral-400"
+      >
+        Написать в поддержку — @Sarrz0
+      </a>
     </div>
   );
 }

@@ -9,7 +9,6 @@ idf_component_register(
         "offline_buffer.c"
         "ota.c"
         "provisioning.c"
-        "touch.c"
     INCLUDE_DIRS "."
     REQUIRES
         nvs_flash

@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import { api, type CareEvent, type Measurement, type Plant } from '../api';
+import { BackButton } from '../components/BackButton';
 import { SpeciesCare } from '../components/SpeciesCare';
 
 type Range = 7 | 30;
@@ -112,10 +113,7 @@ export function PlantCardPage() {
   return (
     <main className="min-h-full p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
       <header className="flex items-center justify-between gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          className="text-status-ok text-sm underline"
-        >← Назад</button>
+        <BackButton />
         <div className="flex items-center gap-3">
           <div className="text-right">
             <h1 className="text-lg font-semibold leading-tight">{title}</h1>
@@ -340,6 +338,15 @@ function Chart({ label, data, dataKey, band, bandKeys, events, inverted }: Chart
                 if (n == null) return '—';
                 return Number.isInteger(n) ? `${n}` : n.toFixed(1);
               }}
+              contentStyle={{
+                background: 'rgb(23 23 23)',
+                border: '1px solid rgb(64 64 64)',
+                borderRadius: 8,
+                color: 'rgb(245 245 245)',
+                fontSize: 12,
+              }}
+              labelStyle={{ color: 'rgb(163 163 163)' }}
+              itemStyle={{ color: 'rgb(245 245 245)' }}
             />
             <Line
               type="monotone"

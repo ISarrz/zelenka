@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
+import { BackButton } from '../components/BackButton';
 
 // Firmware update screen per docs/design-summary.html §firmware.
 //
@@ -59,12 +60,8 @@ export function FirmwareUpdatePage() {
 
   return (
     <main className="min-h-full p-5 max-w-md mx-auto text-neutral-900 dark:text-neutral-100">
-      <div className="flex items-center gap-2 -mx-1 mb-4">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Назад"
-          className="p-1 text-xl"
-        >←</button>
+      <div className="flex items-center gap-3 mb-4">
+        <BackButton />
         <div className="flex-1 text-base font-medium">Прошивка</div>
       </div>
 

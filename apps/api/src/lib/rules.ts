@@ -83,9 +83,9 @@ function copy(
   if (override) return { title, body: override };
   switch (kind) {
     case 'soil_orange':
-      return { title, body: 'Почва подсыхает. Полейте 150–200 мл тёплой отстоянной воды.' };
+      return { title, body: 'Почва подсыхает. Полейте тёплой отстоянной водой.' };
     case 'soil_red':
-      return { title, body: 'Почва сухая. Полейте 200–250 мл воды как можно скорее.' };
+      return { title, body: 'Почва сухая. Полейте как можно скорее.' };
     case 'temp_orange': {
       const t = thresholds.temperatureC;
       const band = t ? `${t.okMin}–${t.okMax}°C` : 'комфортную';

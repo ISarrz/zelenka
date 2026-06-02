@@ -316,20 +316,11 @@ esp_err_t provisioning_run(void) {
     httpd_handle_t srv = start_http();
     ESP_LOGI(TAG, "HTTP server %s", srv ? "started" : "FAILED to start");
 
-    // Hard cap on AP airtime: if the user doesn't submit the form inside
-    // PROVISIONING_TIMEOUT_MS, tear down and return. The caller deep-sleeps,
-    // and the device only comes back to provisioning on a 5-s touch hold.
-    // Successful POST /save calls esp_restart() — execution never reaches the
-    // line after this loop in that case.
-    const int step_ms = 1000;
-    int elapsed = 0;
-    while (elapsed < PROVISIONING_TIMEOUT_MS) {
-        vTaskDelay(pdMS_TO_TICKS(step_ms));
-        elapsed += step_ms;
+    // Stay in SoftAP indefinitely. Successful POST /save calls esp_restart() —
+    // that is the only exit. With the touch button gone, there is no other
+    // way to re-arm provisioning, so a timeout would brick the device.
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(60000));
     }
-    ESP_LOGW(TAG, "provisioning idle timeout — leaving AP");
-    if (srv) httpd_stop(srv);
-    esp_wifi_stop();
-    esp_wifi_deinit();
-    return ESP_ERR_TIMEOUT;
+    return ESP_OK;
 }
