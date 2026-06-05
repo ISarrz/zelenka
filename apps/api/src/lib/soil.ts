@@ -14,10 +14,13 @@ interface Calibration {
   soilWetRaw: number | null;
 }
 
-// Generic-band defaults (mirrored from GENERIC_THRESHOLDS.soilMoistureRaw),
-// inlined here to avoid pulling thresholds.ts into hot read paths.
-const GENERIC_DRY = 2800;
-const GENERIC_WET = 1300;
+// Standard factory calibration anchors. Per-device manual calibration was
+// removed from onboarding; every sensor of this build shares the same probe,
+// so these fixed anchors (dry = in air, wet = in water) are applied to all
+// devices automatically. A device row that *does* carry its own soilDryRaw/
+// soilWetRaw (e.g. an older manually-calibrated unit) still overrides these.
+const GENERIC_DRY = 3100;
+const GENERIC_WET = 1433;
 
 export function soilPctFromRaw(raw: number | null | undefined, cal: Calibration): number | null {
   if (raw == null) return null;

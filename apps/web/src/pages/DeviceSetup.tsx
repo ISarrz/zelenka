@@ -17,11 +17,7 @@ type Step =
   | 'wifi-connect'
   | 'waiting'
   | 'error'
-  | 'connected'
-  | 'calibrate-intro'
-  | 'calibrate-dry'
-  | 'calibrate-wet'
-  | 'calibrate-done';
+  | 'connected';
 
 function isIOS(): boolean {
   if (typeof navigator === 'undefined') return false;
@@ -64,22 +60,15 @@ export function DeviceSetupPage() {
       .catch(() => undefined);
   }, [device, id, navigate]);
 
-  // Live `soilMoistureRaw` from the freshest measurement. We surface it on
-  // the calibration screens so the user can sanity-check that the value
-  // moves between air and water before they tap "Зафиксировать".
-  const [latestSoilRaw, setLatestSoilRaw] = useState<number | null>(null);
-
-  // Poll latest measurement once we're past activation. First measurement
-  // arriving flips waiting → connected; from then on the same poll keeps
-  // `latestSoilRaw` fresh for the calibration screens.
+  // While waiting, poll the latest measurement: the first one to arrive means
+  // the sensor reached the server, so flip waiting → connected.
   useEffect(() => {
-    if (!id || step === 'activation') return;
+    if (!id || step !== 'waiting') return;
     let cancelled = false;
     const tick = async () => {
       try {
         const latest = await api.latestMeasurement(id);
         if (cancelled) return;
-        setLatestSoilRaw(latest.measurement?.soilMoistureRaw ?? null);
         if (latest.measurement && stepRef.current === 'waiting') {
           setStep('connected');
         }
@@ -122,7 +111,7 @@ export function DeviceSetupPage() {
         <span className="w-9 h-9 rounded-full bg-status-ok flex items-center justify-center text-white">
           <PlantArt className="w-[22px] h-auto" strokeWidth={18} />
         </span>
-        <span className="text-base font-medium">Zelenka</span>
+        <span className="text-base font-medium">Zeleno</span>
       </header>
 
       {step === 'activation' && (
@@ -143,41 +132,7 @@ export function DeviceSetupPage() {
       )}
       {step === 'connected' && (
         <Connected
-          onCalibrate={() => setStep('calibrate-intro')}
-          onSkip={() => navigate(`/devices/${device.id}/identify`, { replace: true })}
-        />
-      )}
-      {step === 'calibrate-intro' && (
-        <CalibrateIntro
-          onStart={() => setStep('calibrate-dry')}
-          onSkip={() => navigate(`/devices/${device.id}/identify`, { replace: true })}
-        />
-      )}
-      {step === 'calibrate-dry' && (
-        <CalibrateStep
-          which="dry"
-          soilRaw={latestSoilRaw}
-          onCommit={async () => {
-            if (latestSoilRaw == null) return;
-            await api.setSoilCalibration(device.id, { dryRaw: latestSoilRaw });
-            setStep('calibrate-wet');
-          }}
-        />
-      )}
-      {step === 'calibrate-wet' && (
-        <CalibrateStep
-          which="wet"
-          soilRaw={latestSoilRaw}
-          onCommit={async () => {
-            if (latestSoilRaw == null) return;
-            await api.setSoilCalibration(device.id, { wetRaw: latestSoilRaw });
-            setStep('calibrate-done');
-          }}
-        />
-      )}
-      {step === 'calibrate-done' && (
-        <CalibrateDone
-          onNext={() => navigate(`/devices/${device.id}/identify`, { replace: true })}
+          onContinue={() => navigate(`/devices/${device.id}/identify`, { replace: true })}
         />
       )}
     </main>
@@ -196,17 +151,17 @@ function Activation({ onNext }: { onNext: () => void }) {
       <div>
         <h1 className="text-[22px] font-medium leading-tight">Включите датчик</h1>
         <p className="text-[13px] text-neutral-500 dark:text-neutral-400 mt-2.5 leading-relaxed">
-          Удерживайте сенсорную кнопку 5 секунд, пока индикатор не начнёт мигать.
+          Убедитесь, что датчик работает: на нём должен ровно гореть белый индикатор. Это значит, что датчик включён и ждёт настройку.
         </p>
       </div>
 
-      <InfoNote>Не загорается? Зарядите аккумулятор.</InfoNote>
+      <InfoNote>Индикатор не горит? Зарядите аккумулятор и включите датчик заново.</InfoNote>
 
       <button
         onClick={onNext}
         className="w-full rounded-lg bg-status-ok text-white py-3.5 text-[15px] font-medium"
       >
-        Индикатор мигает — дальше
+        Горит белым — дальше
       </button>
     </div>
   );
@@ -305,7 +260,7 @@ function Waiting() {
       <div className="text-center px-2">
         <div className="text-[20px] font-medium leading-tight">Ждём датчик</div>
         <div className="text-[13px] text-neutral-500 dark:text-neutral-400 mt-2.5 leading-relaxed">
-          Подключается к домашнему Wi-Fi, до минуты.
+          Подключается к домашнему Wi-Fi.
         </div>
       </div>
 
@@ -333,7 +288,7 @@ function ErrorFrame({ onRetry }: { onRetry: () => void }) {
       <ul className="flex flex-col gap-2.5 px-1">
         <Reason icon="wifi">Телефон не в домашней сети — проверьте Wi-Fi</Reason>
         <Reason icon="lock">Пароль домашней сети был неверный</Reason>
-        <Reason icon="broadcast">Датчик выключился — нажмите кнопку</Reason>
+        <Reason icon="broadcast">Датчик выключился — зарядите аккумулятор</Reason>
       </ul>
 
       <button
@@ -354,13 +309,7 @@ function ErrorFrame({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function Connected({
-  onCalibrate,
-  onSkip,
-}: {
-  onCalibrate: () => void;
-  onSkip: () => void;
-}) {
+function Connected({ onContinue }: { onContinue: () => void }) {
   return (
     <div className="space-y-5">
       <div className="flex justify-center pt-6">
@@ -372,186 +321,17 @@ function Connected({
       <div className="text-center px-6">
         <div className="text-[22px] font-medium leading-tight">Датчик на связи</div>
         <div className="text-[13px] text-neutral-500 dark:text-neutral-400 mt-2.5 leading-relaxed">
-          Прислал первый замер. Осталось показать ему, что такое «сухо» и «мокро» — без этого влажность почвы будет приблизительной.
+          Прислал первый замер. Можно знакомиться с растением.
         </div>
       </div>
 
       <button
-        onClick={onCalibrate}
+        onClick={onContinue}
         className="w-full rounded-lg bg-status-ok text-white py-3.5 text-[15px] font-medium"
       >
-        Откалибровать датчик
-      </button>
-      <button
-        onClick={onSkip}
-        className="w-full text-center py-1 text-[13px] text-neutral-500 dark:text-neutral-400"
-      >
-        Пропустить — показания будут приблизительными
+        Продолжить
       </button>
     </div>
-  );
-}
-
-function CalibrateIntro({ onStart, onSkip }: { onStart: () => void; onSkip: () => void }) {
-  return (
-    <div className="space-y-5">
-      <div className="flex justify-center pt-1">
-        <div className="w-44 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center" style={{ height: 180 }}>
-          <CalibrationIllustration />
-        </div>
-      </div>
-      <div>
-        <h1 className="text-[22px] font-medium leading-tight">Откалибруем датчик</h1>
-        <p className="text-[13px] text-neutral-500 dark:text-neutral-400 mt-2.5 leading-relaxed">
-          Покажем датчику, что такое «сухо» и «мокро». Без этого влажность почвы будет приблизительной.
-        </p>
-      </div>
-
-      <div className="rounded-xl bg-neutral-100 dark:bg-neutral-800 px-3.5 py-3">
-        <div className="text-[12px] text-neutral-500 dark:text-neutral-400 mb-2">Что понадобится</div>
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-2 text-[13px]">
-            <Icon name="droplet" size={16} className="text-neutral-500" />
-            <span>Стакан с водой комнатной температуры</span>
-          </div>
-          <div className="flex items-center gap-2 text-[13px]">
-            <span className="w-4 inline-block text-neutral-500 text-center">⏱</span>
-            <span>Около минуты</span>
-          </div>
-        </div>
-      </div>
-
-      <button
-        onClick={onStart}
-        className="w-full rounded-lg bg-status-ok text-white py-3.5 text-[15px] font-medium"
-      >
-        Начать
-      </button>
-      <button
-        onClick={onSkip}
-        className="w-full text-center py-1 text-[13px] text-neutral-500 dark:text-neutral-400"
-      >
-        Пропустить — показания будут приблизительными
-      </button>
-    </div>
-  );
-}
-
-function CalibrateStep({
-  which, soilRaw, onCommit,
-}: {
-  which: 'dry' | 'wet';
-  soilRaw: number | null;
-  onCommit: () => Promise<void> | void;
-}) {
-  const [pending, setPending] = useState(false);
-  const isDry = which === 'dry';
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div />
-        <div className="text-[11px] text-neutral-400">{isDry ? '1 из 2' : '2 из 2'}</div>
-      </div>
-
-      <div className="flex justify-center">
-        <div className="w-40 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center" style={{ height: 140 }}>
-          {isDry ? <DryIllustration /> : <WetIllustration />}
-        </div>
-      </div>
-
-      <div>
-        <h1 className="text-[20px] font-medium leading-tight">
-          {isDry ? 'Подержите датчик в воздухе' : 'Опустите щуп в воду'}
-        </h1>
-        <p className="text-[13px] text-neutral-500 dark:text-neutral-400 mt-2 leading-relaxed">
-          {isDry
-            ? 'Около 10 секунд. Держите за корпус, не касайтесь щупа.'
-            : 'Опустите длинную часть датчика — корпус оставьте сухим. Около 10 секунд.'}
-        </p>
-      </div>
-
-      <div className="rounded-xl bg-neutral-100 dark:bg-neutral-800 px-3.5 py-3 flex items-center gap-3">
-        <span className="w-2 h-2 rounded-full bg-status-ok" />
-        <div className="flex-1">
-          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">Текущее значение</div>
-          <div className="text-[15px] font-medium tabular-nums">
-            {soilRaw == null ? 'ждём первый замер…' : soilRaw}
-          </div>
-        </div>
-      </div>
-
-      <button
-        onClick={async () => { setPending(true); try { await onCommit(); } finally { setPending(false); } }}
-        disabled={soilRaw == null || pending}
-        className="w-full rounded-lg bg-status-ok text-white py-3.5 text-[15px] font-medium disabled:opacity-50"
-      >
-        {pending ? 'Сохраняем…' : isDry ? 'Зафиксировать «сухо»' : 'Зафиксировать «мокро»'}
-      </button>
-    </div>
-  );
-}
-
-function CalibrateDone({ onNext }: { onNext: () => void }) {
-  return (
-    <div className="space-y-5">
-      <div className="flex justify-center pt-6">
-        <div className="w-24 h-24 rounded-full bg-status-ok text-white flex items-center justify-center">
-          <Icon name="check" size={48} />
-        </div>
-      </div>
-      <div className="text-center px-6">
-        <div className="text-[22px] font-medium leading-tight">Калибровка готова</div>
-        <div className="text-[13px] text-neutral-500 dark:text-neutral-400 mt-2.5 leading-relaxed">
-          Теперь датчик умеет переводить показания в проценты влажности. Можно знакомиться с растением.
-        </div>
-      </div>
-      <button
-        onClick={onNext}
-        className="w-full rounded-lg bg-status-ok text-white py-3.5 text-[15px] font-medium"
-      >
-        Опознать растение
-      </button>
-    </div>
-  );
-}
-
-function CalibrationIllustration() {
-  return (
-    <svg width="140" height="130" viewBox="0 0 140 130" aria-hidden>
-      <rect x="46" y="8" width="6" height="46" fill="#888780" />
-      <rect x="44" y="2" width="10" height="8" rx="2" fill="#B4B2A9" />
-      <circle cx="49" cy="6" r="1.5" fill="#639922" />
-      <path d="M 40 36 L 36 118 L 88 118 L 84 36 Z" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-neutral-400" />
-      <path d="M 38 62 L 86 62 L 88 118 L 36 118 Z" fill="#85B7EB" opacity="0.5" />
-      <ellipse cx="62" cy="62" rx="24" ry="2.5" fill="#85B7EB" />
-      <rect x="46" y="54" width="6" height="42" fill="#888780" />
-      <polygon points="46,96 52,96 49,108" fill="#888780" />
-    </svg>
-  );
-}
-
-function DryIllustration() {
-  return (
-    <svg width="60" height="120" viewBox="0 0 60 120" aria-hidden>
-      <rect x="22" y="6" width="16" height="22" rx="3" fill="#B4B2A9" />
-      <circle cx="30" cy="14" r="2.5" fill="#639922" />
-      <rect x="28" y="28" width="4" height="78" fill="#888780" />
-      <polygon points="28,106 32,106 30,116" fill="#888780" />
-    </svg>
-  );
-}
-
-function WetIllustration() {
-  return (
-    <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden>
-      <rect x="46" y="2" width="14" height="20" rx="3" fill="#B4B2A9" />
-      <circle cx="53" cy="8" r="2" fill="#639922" />
-      <path d="M 38 38 L 34 110 L 90 110 L 86 38 Z" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-neutral-400" />
-      <path d="M 36 56 L 88 56 L 90 110 L 34 110 Z" fill="#85B7EB" opacity="0.5" />
-      <ellipse cx="62" cy="56" rx="26" ry="2.5" fill="#85B7EB" />
-      <rect x="51" y="22" width="4" height="74" fill="#888780" />
-      <polygon points="51,96 55,96 53,106" fill="#888780" />
-    </svg>
   );
 }
 

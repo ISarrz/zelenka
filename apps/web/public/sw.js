@@ -7,7 +7,7 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'Zelenka', body: '', url: '/', tag: undefined };
+  let data = { title: 'Zeleno', body: '', url: '/', tag: undefined };
   try {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch (e) {

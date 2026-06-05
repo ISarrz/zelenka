@@ -25,10 +25,10 @@ interface DeviceWithPlant {
   soilWetRaw: number | null;
 }
 
-// Mirror of GENERIC_THRESHOLDS.soilMoistureRaw — used as fallback when the
-// user hasn't calibrated yet, so the chart shows % from day one.
-const GENERIC_SOIL_DRY = 2800;
-const GENERIC_SOIL_WET = 1300;
+// Standard factory soil anchors — must match the server (apps/api soil.ts).
+// Per-device manual calibration was dropped, so these apply to every device.
+const GENERIC_SOIL_DRY = 3100;
+const GENERIC_SOIL_WET = 1433;
 
 function rawToSoilPct(
   raw: number | null | undefined,

@@ -16,7 +16,7 @@ export function LandingPage() {
           <span className="w-9 h-9 rounded-full bg-status-ok flex items-center justify-center text-white">
             <PlantArt className="w-[22px] h-auto" strokeWidth={18} />
           </span>
-          <span className="text-base font-medium">Zelenka</span>
+          <span className="text-base font-medium">Zeleno</span>
         </div>
         <button
           onClick={() => navigate('/auth')}

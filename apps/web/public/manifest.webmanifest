@@ -1,6 +1,6 @@
 {
-  "name": "Zelenka",
-  "short_name": "Zelenka",
+  "name": "Zeleno",
+  "short_name": "Zeleno",
   "description": "Уход за комнатными растениями по данным с датчика",
   "start_url": "/",
   "display": "standalone",

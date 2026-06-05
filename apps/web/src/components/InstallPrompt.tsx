@@ -61,7 +61,7 @@ export function InstallPrompt({ onClose }: { onClose: () => void }) {
           <span className="w-6 h-6 rounded-full bg-status-ok flex items-center justify-center text-white">
             <PlantArt className="w-[14px] h-auto" strokeWidth={22} />
           </span>
-          <span className="text-sm font-medium">Zelenka</span>
+          <span className="text-sm font-medium">Zeleno</span>
         </div>
 
         {variant === 'ios' ? <IOSBody onSkip={dismiss} onClose={onClose} /> : <AndroidBody onSkip={dismiss} onClose={onClose} />}

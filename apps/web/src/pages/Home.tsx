@@ -849,7 +849,7 @@ function PushControl() {
   if (state === 'needs-pwa') {
     return (
       <p className="text-sm text-neutral-500 text-center max-w-sm">
-        Чтобы получать уведомления на iPhone, добавьте Zelenka на главный
+        Чтобы получать уведомления на iPhone, добавьте Zeleno на главный
         экран через значок «Поделиться».
       </p>
     );

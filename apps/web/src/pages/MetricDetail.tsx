@@ -104,8 +104,9 @@ type Range = 7 | 30;
 // Mirrors PlantCard's choice — comfortable 30-70 %, warn 15-90 %.
 const SOIL_PCT_BAND = { okMin: 30, okMax: 70, warnMin: 15, warnMax: 90 };
 
-const GENERIC_SOIL_DRY = 2800;
-const GENERIC_SOIL_WET = 1300;
+// Standard factory soil anchors — must match the server (apps/api soil.ts).
+const GENERIC_SOIL_DRY = 3100;
+const GENERIC_SOIL_WET = 1433;
 function rawToSoilPct(raw: number | null | undefined, dry: number | null, wet: number | null): number | null {
   if (raw == null) return null;
   const d = dry ?? GENERIC_SOIL_DRY;
