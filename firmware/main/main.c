@@ -273,7 +273,7 @@ void app_main(void) {
 
     if (!cfg.present) {
         ESP_LOGI(TAG, "no provisioning — entering SoftAP captive portal");
-        zelenka_led_set(ZELENKA_LED_WIFI);
+        zelenka_led_set(ZELENKA_LED_PROVISIONING);  // solid white while we wait for creds
         provisioning_run();
         // provisioning_run never returns: a successful form submit calls
         // esp_restart(); otherwise it stays in SoftAP forever.
@@ -282,6 +282,7 @@ void app_main(void) {
 
     sensors_init();
     offline_buffer_init();
+    zelenka_led_set(ZELENKA_LED_OFF);  // dark during normal sampling; lights up only to connect
 
     // Stamp the moment we *first* have a usable wall clock — that's the
     // start of the rapid-setup window. For fresh devices this lines up with
@@ -299,9 +300,10 @@ void app_main(void) {
         // Stays awake, Wi-Fi up, six samples 10s apart, push the batch, then
         // hand off to normal aligned-cycle operation.
         ESP_LOGI(TAG, "initial burst: 6 samples * 10s");
-        zelenka_led_set(ZELENKA_LED_WIFI);
+        zelenka_led_set(ZELENKA_LED_CONNECTING);  // blinking white while joining Wi-Fi
         bool wifi_ok = (wifi_connect_blocking(cfg.wifi_ssid, cfg.wifi_password) == ESP_OK);
         if (wifi_ok) {
+            zelenka_led_set(ZELENKA_LED_CONNECTED);  // green 10 s, then off
             wifi_fail_streak = 0;
             if (!time_synced) time_synced = sync_ntp_blocking();
         } else {
@@ -324,14 +326,15 @@ void app_main(void) {
         }
 
         if (wifi_ok) {
-            zelenka_led_set(ZELENKA_LED_SENDING);
+            // LED stays on the green "connected" confirmation; only a failure
+            // overrides it (red). The POST runs silently underneath.
             http_post_meta_t meta = collect_post_meta();
             bool factory_reset = false;
             esp_err_t err = http_post_batch(
                 cfg.api_url, cfg.device_token,
                 batch_samples, batch_epochs, batch_count, &meta, &factory_reset);
             handle_factory_reset_if_requested(factory_reset);
-            zelenka_led_set(err == ESP_OK ? ZELENKA_LED_OK : ZELENKA_LED_ERROR);
+            if (err != ESP_OK) zelenka_led_set(ZELENKA_LED_ERROR);
             if (err == ESP_OK) {
                 batch_count = 0;
                 zelenka_err_clear();
@@ -368,8 +371,9 @@ void app_main(void) {
                  r.temperature_c, r.humidity_pct, r.lux, r.soil_moisture_raw);
 
         if (batch_count >= current_batch_target()) {
-            zelenka_led_set(ZELENKA_LED_WIFI);
+            zelenka_led_set(ZELENKA_LED_CONNECTING);  // blinking white while joining Wi-Fi
             if (wifi_connect_blocking(cfg.wifi_ssid, cfg.wifi_password) == ESP_OK) {
+                zelenka_led_set(ZELENKA_LED_CONNECTED);  // green 10 s, then off
                 wifi_fail_streak = 0;
                 if (!time_synced) time_synced = sync_ntp_blocking();
                 if (time_synced) {
@@ -381,7 +385,8 @@ void app_main(void) {
                         }
                     }
                 }
-                zelenka_led_set(ZELENKA_LED_SENDING);
+                // LED stays on the green "connected" confirmation; the POST
+                // runs silently underneath and only a failure overrides it (red).
                 http_post_meta_t meta = collect_post_meta();
                 bool factory_reset = false;
                 esp_err_t err = http_post_batch(
@@ -391,7 +396,6 @@ void app_main(void) {
                 if (err == ESP_OK) {
                     batch_count = 0;
                     zelenka_err_clear();
-                    zelenka_led_set(ZELENKA_LED_OK);
                     flush_offline_pending(&cfg);
                     ota_mark_valid_if_pending();
                     char base[64];
@@ -412,6 +416,18 @@ void app_main(void) {
                 if (++wifi_fail_streak >= WIFI_FAIL_LIMIT) drop_to_provisioning("cycle");
             }
         }
+    }
+
+    // Once the burst has synced the clock on a freshly-provisioned device,
+    // open the rapid-setup window now so the very next wake is on the fast
+    // (10 s) cadence. Without this the stamp above is skipped (on a fresh
+    // device time isn't synced until the burst's NTP runs), the device then
+    // sleeps a full production interval and posts only a batch/hour — so the
+    // calibration UI sees no fresh soil reading for ~an hour right after
+    // setup. On OTA-upgraded devices this is a no-op (already stamped above).
+    if (time_synced && provisioned_at_epoch == 0) {
+        provisioned_at_epoch = (int64_t)time(NULL);
+        ESP_LOGI(TAG, "rapid-setup window begins (1 hour from now)");
     }
 
     // Align next wake to the next multiple of the active sample interval —
