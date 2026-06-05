@@ -371,7 +371,9 @@ void app_main(void) {
                  r.temperature_c, r.humidity_pct, r.lux, r.soil_moisture_raw);
 
         if (batch_count >= current_batch_target()) {
-            zelenka_led_set(ZELENKA_LED_CONNECTING);  // blinking white while joining Wi-Fi
+            // No white "connecting" blink on routine sends — that ceremony is
+            // only shown on the very first connect (the burst above). Here we
+            // stay dark until connected, then flash green.
             if (wifi_connect_blocking(cfg.wifi_ssid, cfg.wifi_password) == ESP_OK) {
                 zelenka_led_set(ZELENKA_LED_CONNECTED);  // green 10 s, then off
                 wifi_fail_streak = 0;

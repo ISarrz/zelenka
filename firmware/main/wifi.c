@@ -22,13 +22,30 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t *e = (wifi_event_sta_disconnected_t *)data;
+        int reason = e ? e->reason : -1;
+        int rssi = e ? e->rssi : 0;
         if (s_retries++ < 5) {
-            ESP_LOGW(TAG, "disconnected, retry %d", s_retries);
+            ESP_LOGW(TAG, "disconnected (reason %d, rssi %d), retry %d", reason, rssi, s_retries);
             esp_wifi_connect();
         } else {
+            ESP_LOGE(TAG, "giving up after disconnect (last reason %d, rssi %d)", reason, rssi);
             xEventGroupSetBits(s_events, BIT_FAILED);
         }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+        // Some routers hand out a DNS server that doesn't actually resolve
+        // (seen on MGTS GPON: getaddrinfo() fails even though the uplink is
+        // fine). Force public resolvers so NTP and the HTTPS POST can always
+        // turn zelenka-api.ru / pool.ntp.org into an address.
+        esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        if (sta) {
+            esp_netif_dns_info_t d = {0};
+            d.ip.type = ESP_IPADDR_TYPE_V4;
+            d.ip.u_addr.ip4.addr = esp_ip4addr_aton("1.1.1.1");
+            esp_netif_set_dns_info(sta, ESP_NETIF_DNS_MAIN, &d);
+            d.ip.u_addr.ip4.addr = esp_ip4addr_aton("8.8.8.8");
+            esp_netif_set_dns_info(sta, ESP_NETIF_DNS_BACKUP, &d);
+        }
         s_retries = 0;
         xEventGroupSetBits(s_events, BIT_CONNECTED);
     }

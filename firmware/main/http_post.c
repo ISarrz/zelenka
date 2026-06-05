@@ -7,6 +7,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_netif.h"
 
 static const char *TAG = "http";
 
@@ -125,6 +126,19 @@ esp_err_t http_post_batch(
 
     char auth[128];
     snprintf(auth, sizeof(auth), "Bearer %s", device_token);
+
+    // Force public DNS right before resolving the host. Some routers' DHCP
+    // resolver fails on our domain and may clobber the override set in wifi.c
+    // during the long awake window before this POST. Belt-and-suspenders.
+    esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (sta) {
+        esp_netif_dns_info_t dns = {0};
+        dns.ip.type = ESP_IPADDR_TYPE_V4;
+        dns.ip.u_addr.ip4.addr = esp_ip4addr_aton("1.1.1.1");
+        esp_netif_set_dns_info(sta, ESP_NETIF_DNS_MAIN, &dns);
+        dns.ip.u_addr.ip4.addr = esp_ip4addr_aton("8.8.8.8");
+        esp_netif_set_dns_info(sta, ESP_NETIF_DNS_BACKUP, &dns);
+    }
 
     esp_http_client_config_t cfg = {
         .url = api_url,
