@@ -21,6 +21,10 @@ export interface PerenualHit {
   // Min hours of bright light per day per upstream xSunlightDuration. Used
   // to grade lux as "hours-bright vs target" rather than instant lux.
   minSunHours: number | null;
+  // Upstream drought_tolerant flag. Finer than the 3-bucket `watering` field;
+  // shifts the soil pct comfort band so these species can dry further before
+  // we warn. Null when the catalog row doesn't carry the flag.
+  droughtTolerant: boolean | null;
 }
 
 function pickFirst(arr: unknown): string | null {
@@ -63,6 +67,7 @@ export async function findBestPerenualMatch(scientificName: string): Promise<Per
     defaultImageUrl: di?.regular_url ?? di?.original_url ?? null,
     details,
     minSunHours: extractMinSunHours(details),
+    droughtTolerant: extractDroughtTolerant(details),
   };
 }
 
@@ -121,4 +126,19 @@ function extractMinSunHours(details: Record<string, unknown> | null): number | n
   // Filter out the obvious garbage row (one species has min=2500).
   if (!Number.isFinite(n) || n <= 0 || n > 24) return null;
   return n;
+}
+
+// drought_tolerant arrives as a JSON boolean in most rows, occasionally as the
+// strings "true"/"false". Anything else (missing, null) → null so callers can
+// tell "not drought-tolerant" apart from "unknown".
+function extractDroughtTolerant(details: Record<string, unknown> | null): boolean | null {
+  if (!details) return null;
+  const v = details.drought_tolerant;
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (s === 'true') return true;
+    if (s === 'false') return false;
+  }
+  return null;
 }

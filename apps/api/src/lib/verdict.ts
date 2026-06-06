@@ -70,16 +70,22 @@ function gradeSoil(
   return 'ok';
 }
 
-// Preferred grading path when calibration is set — operates in user-facing
-// pct space so the cell colour matches what the user reads on screen.
-// Bands mirror the chart's SOIL_PCT_BAND with an extra alert layer on both
-// extremes.
-function gradeSoilPct(pct: number | null | undefined): Severity {
+// Preferred grading path — operates in user-facing pct space so the cell
+// colour matches what the user reads on screen. The band comes from the
+// species thresholds (derived from Perenual watering category + drought
+// tolerance); falls back to the generic boundaries when none is supplied.
+const GENERIC_SOIL_PCT_BAND = { dryAlert: 10, dryWarn: 25, wetWarn: 85, wetAlert: 95 };
+
+function gradeSoilPct(
+  pct: number | null | undefined,
+  band?: { dryAlert: number; dryWarn: number; wetWarn: number; wetAlert: number },
+): Severity {
   if (pct == null) return 'unknown';
-  if (pct < 10) return 'alert';   // bone dry
-  if (pct < 25) return 'warn';
-  if (pct > 95) return 'alert';   // soaking
-  if (pct > 85) return 'warn';
+  const b = band ?? GENERIC_SOIL_PCT_BAND;
+  if (pct < b.dryAlert) return 'alert';   // bone dry
+  if (pct < b.dryWarn) return 'warn';
+  if (pct > b.wetAlert) return 'alert';   // soaking
+  if (pct > b.wetWarn) return 'warn';
   return 'ok';
 }
 
@@ -109,9 +115,11 @@ export function evaluate(
     temperatureC: gradeBand(reading.temperatureC, thresholds.temperatureC),
     humidityPct:  gradeBand(reading.humidityPct,  thresholds.humidityPct),
     lux:          luxSeverity,
-    // Prefer pct grading when the caller did the calibration conversion.
+    // Prefer pct grading (the live path) — uses the species pct band so
+    // drought-tolerant / thirsty plants grade differently. Falls back to the
+    // raw band only when pct couldn't be computed (bad/absent calibration).
     soilMoistureRaw: reading.soilMoisturePct != null
-      ? gradeSoilPct(reading.soilMoisturePct)
+      ? gradeSoilPct(reading.soilMoisturePct, thresholds.soilMoisturePct)
       : gradeSoil(reading.soilMoistureRaw, thresholds.soilMoistureRaw),
   };
 

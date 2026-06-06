@@ -8,6 +8,12 @@ export interface CareThresholds {
   temperatureC?: { okMin: number; okMax: number; warnMin: number; warnMax: number };
   humidityPct?:  { okMin: number; okMax: number; warnMin: number; warnMax: number };
   lux?:          { okMin: number; okMax: number; warnMin: number; warnMax: number };
+  // User-facing soil comfort band in pct (0..100). pct grows as the soil gets
+  // wetter (inverse of raw ADC). Four boundaries cut the range into
+  // alert(dry) < warn(dry) < ok < warn(wet) < alert(wet). **This is the band
+  // the ring verdict actually grades against** — the raw band below is only a
+  // fallback for samples we couldn't convert to pct (bad/absent calibration).
+  soilMoisturePct?: { dryAlert: number; dryWarn: number; wetWarn: number; wetAlert: number };
   soilMoistureRaw?: { wet: number; dry: number; criticallyDry: number };
   // Hours of bright light (lux ≥ BRIGHT_LUX_THRESHOLD) the plant needs per
   // day. Driven by Perenual's xSunlightDuration.min; falls back to a generic
@@ -28,6 +34,7 @@ export const GENERIC_THRESHOLDS: CareThresholds = {
   temperatureC: { warnMin: 12, okMin: 16, okMax: 28, warnMax: 32 },
   humidityPct:  { warnMin: 25, okMin: 35, okMax: 70, warnMax: 80 },
   lux:          { warnMin: 150, okMin: 400, okMax: 30000, warnMax: 60000 },
+  soilMoisturePct: { dryAlert: 10, dryWarn: 25, wetWarn: 85, wetAlert: 95 },
   soilMoistureRaw: { wet: 1300, dry: 2800, criticallyDry: 3300 },
   minSunHours: 4,
 };
@@ -40,6 +47,7 @@ export function thresholdsFromPerenual(row: {
   sunlight?: string[] | null;
   details?: Record<string, unknown> | null;
   minSunHours?: number | null;
+  droughtTolerant?: boolean | null;
 }): CareThresholds {
   const t: CareThresholds = JSON.parse(JSON.stringify(GENERIC_THRESHOLDS));
 
@@ -50,17 +58,40 @@ export function thresholdsFromPerenual(row: {
 
   // Watering → soil moisture comfort band.
   // "Frequent" plants want it wetter; "Minimum" plants tolerate dryness.
+  //
+  // Two bands are kept in sync:
+  //   - soilMoisturePct — what the ring verdict reads (pct space).
+  //   - soilMoistureRaw — pre-calibration fallback only (raw ADC space).
+  // Both move the same direction per category; the pct one is authoritative.
   switch (row.watering?.toLowerCase()) {
     case 'frequent':
+      // Wants it wet — start warning while there's still moisture left, and
+      // tolerate the high end a bit more before flagging "soaking".
+      t.soilMoisturePct = { dryAlert: 15, dryWarn: 30, wetWarn: 90, wetAlert: 97 };
       t.soilMoistureRaw = { wet: 1100, dry: 2300, criticallyDry: 2900 };
       break;
     case 'minimum':
+      // Tolerates dryness; stricter on the wet side (overwatering risk).
+      t.soilMoisturePct = { dryAlert: 8, dryWarn: 18, wetWarn: 80, wetAlert: 92 };
       t.soilMoistureRaw = { wet: 1700, dry: 3300, criticallyDry: 3800 };
       break;
     case 'none':
+      t.soilMoisturePct = { dryAlert: 5, dryWarn: 14, wetWarn: 75, wetAlert: 88 };
       t.soilMoistureRaw = { wet: 1900, dry: 3500, criticallyDry: 4000 };
       break;
     // "Average" = generic default
+  }
+
+  // drought_tolerant is a finer signal than the 3-bucket watering field: let
+  // these species dry further before we warn/alert. Applied on top of the
+  // category band so e.g. a drought-tolerant "Average" plant still differs
+  // from a thirsty one. Floors keep "bone dry" meaningful.
+  if (row.droughtTolerant && t.soilMoisturePct) {
+    t.soilMoisturePct = {
+      ...t.soilMoisturePct,
+      dryAlert: Math.max(3, t.soilMoisturePct.dryAlert - 4),
+      dryWarn: Math.max(8, t.soilMoisturePct.dryWarn - 7),
+    };
   }
 
   // Sunlight → lux range. The Perenual sunlight field is a JSON array; the

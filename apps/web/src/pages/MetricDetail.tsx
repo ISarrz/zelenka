@@ -19,6 +19,7 @@ import {
   type Verdict,
 } from '../api';
 import { BackButton } from '../components/BackButton';
+import { soilPctChartBand } from '../lib/soil';
 
 // Drill-down screens per docs/design-summary.html §metric. Single component
 // dispatches on :metric (soil / light / temperature / humidity) — the layout
@@ -48,7 +49,8 @@ const CONFIG: Record<Metric, MetricConfig> = {
   soil: {
     title: 'Почва',
     // Stored measurement field stays soilMoistureRaw — chart converts on the
-    // fly using device calibration. Threshold band is fixed pct (see SOIL_PCT_BAND).
+    // fly using device calibration. The pct comfort band comes from the
+    // species thresholds (soilPctChartBand), so it matches the ring verdict.
     measurementKey: 'soilMoistureRaw',
     thresholdKey: 'soilMoistureRaw',
     formatValue: (n) => ({ value: `${n}`, unit: '%' }),
@@ -99,10 +101,6 @@ const METRIC_PARAM: Record<string, Metric> = {
 };
 
 type Range = 7 | 30;
-
-// Fixed pct band used in place of the raw soil band for display purposes.
-// Mirrors PlantCard's choice — comfortable 30-70 %, warn 15-90 %.
-const SOIL_PCT_BAND = { okMin: 30, okMax: 70, warnMin: 15, warnMax: 90 };
 
 // Standard factory soil anchors — must match the server (apps/api soil.ts).
 const GENERIC_SOIL_DRY = 3100;
@@ -212,9 +210,10 @@ export function MetricDetailPage() {
     : rawSample;
   const severity: Severity | undefined =
     latest.verdict?.perParam[cfg.measurementKey === 'soilMoistureRaw' ? 'soilMoistureRaw' : cfg.measurementKey] ?? undefined;
-  // Bands also change shape for soil: pct domain (0–100), fixed comfort window.
+  // Bands also change shape for soil: pct domain (0–100), comfort window from
+  // the species thresholds (falls back to generic inside soilPctChartBand).
   const band: Record<string, number> | null = m === 'soil'
-    ? SOIL_PCT_BAND
+    ? soilPctChartBand(latest.thresholds)
     : ((latest.thresholds?.[cfg.thresholdKey] as Record<string, number> | undefined) ?? null);
   const status = rawValue == null ? null : statusText(m!, rawValue, severity, band, cfg.inverted);
   const action = rawValue == null ? null : actionText(m!, severity);

@@ -103,6 +103,7 @@ export async function plantRoutes(app: FastifyInstance): Promise<void> {
           sunlight: hit.sunlight,
           details: hit.details,
           minSunHours: hit.minSunHours,
+          droughtTolerant: hit.droughtTolerant,
         })
       : GENERIC_THRESHOLDS;
     const notifTexts = hit ? notificationTextsFromPerenual({ watering: hit.watering }) : null;

@@ -14,6 +14,7 @@ import {
 import { api, type CareEvent, type Measurement, type Plant } from '../api';
 import { BackButton } from '../components/BackButton';
 import { SpeciesCare } from '../components/SpeciesCare';
+import { soilPctChartBand } from '../lib/soil';
 
 type Range = 7 | 30;
 
@@ -107,8 +108,9 @@ export function PlantCardPage() {
     soilMoisturePct: rawToSoilPct(s.soilMoistureRaw, device.soilDryRaw, device.soilWetRaw),
   }));
 
-  // ok = 30–70 % comfortable for most houseplants. Warn-low <30, warn-high >85.
-  const soilPctBand = { okMin: 30, okMax: 70, warnMin: 15, warnMax: 90 };
+  // Soil comfort band from the species thresholds (matches the ring verdict);
+  // falls back to the generic band for generic-profile / pre-band species.
+  const soilPctBand = soilPctChartBand(thresholds);
 
   return (
     <main className="min-h-full p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
