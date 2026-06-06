@@ -1,7 +1,7 @@
 import type { CareThresholds } from './thresholds.js';
 
 export type Severity = 'ok' | 'warn' | 'alert' | 'unknown';
-export type RingStatus = 'cold' | 'ok' | 'warn' | 'alert';
+export type RingStatus = 'ok' | 'warn' | 'alert';
 
 export interface Reading {
   temperatureC?: number | null;
@@ -31,8 +31,6 @@ export interface Verdict {
   ring: RingStatus;
   perParam: PerParamVerdict;
 }
-
-const COLD_START_MS = 48 * 60 * 60 * 1000;
 
 function gradeBand(
   v: number | null | undefined,
@@ -122,12 +120,6 @@ export function evaluate(
       ? gradeSoilPct(reading.soilMoisturePct, thresholds.soilMoisturePct)
       : gradeSoil(reading.soilMoistureRaw, thresholds.soilMoistureRaw),
   };
-
-  // 48-hour cold-start rule from the design doc — we don't give a verdict
-  // until the device has been bound long enough to have a baseline.
-  if (identifiedAt && Date.now() - identifiedAt.getTime() < COLD_START_MS) {
-    return { ring: 'cold', perParam };
-  }
 
   // Aggregate ring: alert > warn > ok. Unknown is treated as ok-equivalent
   // (don't alarm just because a sensor is missing).

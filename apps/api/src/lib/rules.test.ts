@@ -3,11 +3,9 @@ import { describe, it } from 'node:test';
 import {
   copy,
   detectTriggers,
-  inQuietHours,
   isImprovingTrend,
   type MeasurementCtx,
   type PlantCtx,
-  type QuietHours,
 } from './rules.js';
 import { GENERIC_THRESHOLDS } from './thresholds.js';
 import type { PerParamVerdict, RingStatus, Verdict } from './verdict.js';
@@ -40,43 +38,6 @@ const measureCtx = (over: Partial<MeasurementCtx> = {}): MeasurementCtx => ({
   measuredAt: new Date('2026-01-01T12:00:00Z'), ...over,
 });
 
-// ---- inQuietHours ----------------------------------------------------------
-
-describe('inQuietHours', () => {
-  const utc = (iso: string) => new Date(iso);
-  const q = (startMin: number | null, endMin: number | null): QuietHours =>
-    ({ startMin, endMin, timezone: 'UTC' });
-
-  it('false when no window configured', () => {
-    assert.equal(inQuietHours(utc('2026-01-01T03:00:00Z'), q(null, null)), false);
-    assert.equal(inQuietHours(utc('2026-01-01T03:00:00Z'), q(1380, null)), false);
-  });
-
-  it('same-day window (22:00–23:00)', () => {
-    const win = q(22 * 60, 23 * 60);
-    assert.equal(inQuietHours(utc('2026-01-01T22:30:00Z'), win), true);
-    assert.equal(inQuietHours(utc('2026-01-01T21:00:00Z'), win), false);
-    assert.equal(inQuietHours(utc('2026-01-01T22:00:00Z'), win), true); // inclusive start
-    assert.equal(inQuietHours(utc('2026-01-01T23:00:00Z'), win), true); // inclusive end
-  });
-
-  it('wrap-midnight window (23:00–07:00)', () => {
-    const win = q(23 * 60, 7 * 60);
-    assert.equal(inQuietHours(utc('2026-01-01T02:00:00Z'), win), true);
-    assert.equal(inQuietHours(utc('2026-01-01T23:30:00Z'), win), true);
-    assert.equal(inQuietHours(utc('2026-01-01T06:00:00Z'), win), true);
-    assert.equal(inQuietHours(utc('2026-01-01T12:00:00Z'), win), false);
-    assert.equal(inQuietHours(utc('2026-01-01T07:30:00Z'), win), false);
-  });
-
-  it('honours the timezone (08:00 UTC = 11:00 in Moscow)', () => {
-    // Window 10:00–12:00 local Moscow. 08:00Z is 11:00 MSK → inside.
-    const win: QuietHours = { startMin: 10 * 60, endMin: 12 * 60, timezone: 'Europe/Moscow' };
-    assert.equal(inQuietHours(utc('2026-01-01T08:00:00Z'), win), true);
-    assert.equal(inQuietHours(utc('2026-01-01T05:00:00Z'), win), false); // 08:00 MSK
-  });
-});
-
 // ---- detectTriggers --------------------------------------------------------
 
 describe('detectTriggers — only fires on entering the problem zone', () => {
@@ -86,8 +47,8 @@ describe('detectTriggers — only fires on entering the problem zone', () => {
     assert.deepEqual(out, ['soil_red']);
   });
 
-  it('soil warn from cold start → soil_orange', () => {
-    const out = detectTriggers(plantCtx({ prevRingStatus: 'cold' }), measureCtx(),
+  it('soil warn from a prior ok → soil_orange', () => {
+    const out = detectTriggers(plantCtx({ prevRingStatus: 'ok' }), measureCtx(),
       verdict('warn', { soilMoistureRaw: 'warn' }));
     assert.deepEqual(out, ['soil_orange']);
   });

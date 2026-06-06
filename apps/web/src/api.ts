@@ -94,15 +94,11 @@ export interface BatteryStatus {
   mv: number | null;
   voltage: number;
   estimate: BatteryEstimate;
-  cyclesSinceLastCharge: number;
-  cyclesPerFullBattery: number | null;
-  daysUntilCritical: number | null;
-  lastChargeAt: string | null;
   calibrated: boolean;
 }
 
 export type Severity = 'ok' | 'warn' | 'alert' | 'unknown';
-export type RingStatus = 'cold' | 'ok' | 'warn' | 'alert';
+export type RingStatus = 'ok' | 'warn' | 'alert';
 
 export interface Verdict {
   ring: RingStatus;
@@ -181,8 +177,6 @@ export const api = {
     }>(`/devices/${deviceId}/latest`),
   deleteDevice: (deviceId: string) =>
     request<null>(`/devices/${deviceId}`, { method: 'DELETE' }),
-  replaceDevice: (deviceId: string) =>
-    request<{ device: Device }>(`/devices/${deviceId}/replace`, { method: 'POST' }),
   factoryResetDevice: (deviceId: string) =>
     request<{ status: string }>(`/devices/${deviceId}/factory-reset`, { method: 'POST' }),
   firmwareManifest: () =>
@@ -244,7 +238,7 @@ export const api = {
       method: 'DELETE',
     }),
   meSettings: () => request<{ user: SettingsUser }>('/me/settings'),
-  updateSettings: (body: Partial<Pick<SettingsUser, 'timezone' | 'quietHoursStartMin' | 'quietHoursEndMin'>>) =>
+  updateSettings: (body: Partial<Pick<SettingsUser, 'timezone'>>) =>
     request<{ user: SettingsUser }>('/me/settings', {
       method: 'PATCH',
       body: JSON.stringify(body),
@@ -255,8 +249,6 @@ export interface SettingsUser {
   id: string;
   email: string;
   timezone: string;
-  quietHoursStartMin: number | null;
-  quietHoursEndMin: number | null;
 }
 
 export interface CareEvent {

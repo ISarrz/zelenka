@@ -126,12 +126,10 @@ system notification.
 | `air_dry`           | same                    | 24h           | 5+ days under `humidityPct.okMin`.                    |
 | `sensor_silent`     | same                    | 24h           | 24h+ since last measurement.                          |
 | `onboarding_place_ok` / `_alert` | same       | once / plant  | At +48h after `Plant.identifiedAt`.                   |
-| `morning_digest`    | same                    | daily         | At `User.quietHoursEndMin` in user's TZ.              |
 | `battery_low_week`  | same                    | 7d            | Battery estimate in {`low`, `critical`}.              |
 
 Cooldowns and the daily cap (3 / plant / 24h) are enforced by
-`shouldSuppress()` in `lib/rules.ts`. Quiet hours mute everything; the
-muted entries surface in the morning digest.
+`shouldSuppress()` in `lib/rules.ts`.
 
 ### Subscription lifecycle
 

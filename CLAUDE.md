@@ -214,8 +214,7 @@ violates them without first changing the design doc.
   jumps. No manual "I watered" logging.
 - **Push = action with numbers**, not alert text.
 - **Push fires on two kinds of events only** (defined in design doc
-  "Когда вообще приходит пуш") with cooldowns, daily caps, and quiet
-  hours that mute everything by default.
+  "Когда вообще приходит пуш") with cooldowns and daily caps.
 - **No gamification, no badges, no streaks, no social, no chatty AI tips.**
 - **RU-only on MVP.**
 
@@ -227,9 +226,10 @@ violates them without first changing the design doc.
   / week / user (rolling 7 days), 80% confidence threshold. Sprint 0
   doesn't surface it yet — the key in `plant_id.txt` lands in env in
   Sprint 1.
-- Battery indicator (when firmware starts reporting): 4 qualitative
-  states only (full/medium/low/critical), never a percentage. Per-device
-  `cycles_per_full_battery` self-learns after each marked recharge.
+- Battery indicator: 4 qualitative states only (full/medium/low/critical),
+  never a percentage and never a "days remaining" estimate. Derived purely
+  from the measured cell voltage (`lib/battery.ts`). The earlier per-cycle
+  self-learning (`cycles_per_full_battery`) was removed.
 - Image storage / serving: TBD when we get to the plant card. The
   upstream Perenual mirror has 5.6 GB of images on disk but we don't ship
   them in containers — links from `raw_json` are an option.

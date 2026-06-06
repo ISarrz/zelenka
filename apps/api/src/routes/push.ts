@@ -13,11 +13,6 @@ const Subscribe = z.object({
 
 const Unsubscribe = z.object({ endpoint: z.string().url() });
 
-const QuietHours = z.object({
-  startMin: z.number().int().min(0).max(60 * 24 - 1).nullable(),
-  endMin: z.number().int().min(0).max(60 * 24 - 1).nullable(),
-});
-
 export async function pushRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/push/vapid-public-key', async () => ({
     key: config.vapidPublicKey || null,
@@ -62,30 +57,6 @@ export async function pushRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/api/push/scan-now', { preHandler: requireUser }, async () => {
     await scanScheduledTriggers();
-    return { status: 'ok' };
-  });
-
-  app.get('/api/me/quiet-hours', { preHandler: requireUser }, async (req) => {
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId! },
-      select: { quietHoursStartMin: true, quietHoursEndMin: true },
-    });
-    return {
-      startMin: user?.quietHoursStartMin ?? null,
-      endMin: user?.quietHoursEndMin ?? null,
-    };
-  });
-
-  app.post('/api/me/quiet-hours', { preHandler: requireUser }, async (req, reply) => {
-    const parsed = QuietHours.safeParse(req.body);
-    if (!parsed.success) { reply.code(400); return { error: 'invalid' }; }
-    await prisma.user.update({
-      where: { id: req.userId! },
-      data: {
-        quietHoursStartMin: parsed.data.startMin,
-        quietHoursEndMin: parsed.data.endMin,
-      },
-    });
     return { status: 'ok' };
   });
 }

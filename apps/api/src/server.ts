@@ -57,7 +57,7 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 await app.listen({ host: '0.0.0.0', port: config.port });
 
 // Once-per-10-min scheduler for the time-based push triggers
-// (light_low, air_dry, sensor_silent, onboarding_*, morning_digest).
+// (light_low, air_dry, sensor_silent, onboarding_*, battery_low_week).
 const SCHEDULED_INTERVAL_MS = 10 * 60 * 1000;
 scheduledTimer = setInterval(() => {
   scanScheduledTriggers().catch((err) => app.log.error({ err }, 'scheduled scan failed'));

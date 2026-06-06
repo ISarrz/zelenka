@@ -10,7 +10,7 @@ function statusDotClass(s: string | null | undefined): string {
     case 'ok':    return 'bg-status-ok';
     case 'warn':  return 'bg-status-warn';
     case 'alert': return 'bg-status-alert';
-    case 'cold':
+    // null / unknown / no-data → neutral gray.
     default:      return 'bg-status-cold';
   }
 }
@@ -19,7 +19,6 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const [user, setUser] = useState<SettingsUser | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [saving, setSaving] = useState(false);
   const [pushOn, setPushOn] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [installOpen, setInstallOpen] = useState(false);
@@ -47,16 +46,6 @@ export function SettingsPage() {
     return <main className="min-h-full flex items-center justify-center text-neutral-500">Загрузка…</main>;
   }
 
-  const setQuiet = async (field: 'quietHoursStartMin' | 'quietHoursEndMin', minutes: number | null) => {
-    setSaving(true);
-    try {
-      const { user: updated } = await api.updateSettings({ [field]: minutes });
-      setUser(updated);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally { setSaving(false); }
-  };
-
   const disablePush = async () => {
     const endpoint = await unsubscribeFromPush();
     if (endpoint) await api.pushUnsubscribe(endpoint).catch(() => undefined);
@@ -80,38 +69,6 @@ export function SettingsPage() {
         <h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Аккаунт</h2>
         <Row label="Почта" value={user.email} />
         <Row label="Часовой пояс" value={user.timezone} />
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Тихие часы</h2>
-        <p className="text-xs text-neutral-500">
-          В заданное окно уведомления не приходят — события за ночь
-          присылаем одним пушем утром.
-        </p>
-        <div className="flex items-center gap-2">
-          <TimeField
-            label="С"
-            value={user.quietHoursStartMin}
-            onChange={(m) => setQuiet('quietHoursStartMin', m)}
-            disabled={saving}
-          />
-          <TimeField
-            label="До"
-            value={user.quietHoursEndMin}
-            onChange={(m) => setQuiet('quietHoursEndMin', m)}
-            disabled={saving}
-          />
-        </div>
-        {(user.quietHoursStartMin != null || user.quietHoursEndMin != null) && (
-          <button
-            onClick={async () => {
-              await api.updateSettings({ quietHoursStartMin: null, quietHoursEndMin: null });
-              const { user: u } = await api.meSettings();
-              setUser(u);
-            }}
-            className="text-sm text-status-ok underline"
-          >Сбросить тихие часы</button>
-        )}
       </section>
 
       <section className="space-y-2">
@@ -195,34 +152,5 @@ function Row({ label, value }: { label: string; value: string }) {
       <span className="text-sm text-neutral-500">{label}</span>
       <span className="text-sm">{value}</span>
     </div>
-  );
-}
-
-function TimeField({
-  label, value, onChange, disabled,
-}: {
-  label: string;
-  value: number | null;
-  onChange: (minutes: number | null) => void;
-  disabled?: boolean;
-}) {
-  const hh = value == null ? '' : String(Math.floor(value / 60)).padStart(2, '0');
-  const mm = value == null ? '' : String(value % 60).padStart(2, '0');
-  return (
-    <label className="flex-1">
-      <span className="block text-xs text-neutral-500 mb-1">{label}</span>
-      <input
-        type="time"
-        value={value == null ? '' : `${hh}:${mm}`}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (!v) { onChange(null); return; }
-          const [h, m] = v.split(':').map(Number);
-          onChange(h * 60 + m);
-        }}
-        disabled={disabled}
-        className="w-full rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-base"
-      />
-    </label>
   );
 }

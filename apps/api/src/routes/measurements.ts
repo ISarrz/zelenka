@@ -2,7 +2,6 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { requireDevice } from '../lib/auth.js';
-import { batteryVoltage, updateBatteryCounters } from '../lib/battery.js';
 import { detectAutoEvents } from '../lib/care_events.js';
 import { evaluatePushTriggers } from '../lib/rules.js';
 import type { CareThresholds } from '../lib/thresholds.js';
@@ -99,20 +98,6 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
     }
     const now = new Date();
 
-    // Compute battery counter delta BEFORE inserting — we need to know the
-    // prior-recorded voltage, which would otherwise include the new samples
-    // we're about to write.
-    const samplesWithBattery = samples.filter((s) => s.batteryRaw != null || s.batteryMv != null);
-    let priorBatteryVoltage: number | null = null;
-    if (samplesWithBattery.length > 0) {
-      const lastBattery = await prisma.measurement.findFirst({
-        where: { deviceId: req.deviceId!, OR: [{ batteryRaw: { not: null } }, { batteryMv: { not: null } }] },
-        orderBy: { measuredAt: 'desc' },
-        select: { batteryRaw: true, batteryMv: true },
-      });
-      priorBatteryVoltage = batteryVoltage(lastBattery?.batteryRaw, lastBattery?.batteryMv);
-    }
-
     // Pull soil calibration once for the whole batch so we can render
     // pct = f(raw, dry, wet) at write-time. Firmware-provided pct still
     // wins when present — it's already the right answer, no need to recompute.
@@ -149,30 +134,12 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
     });
     const factoryResetPending = devForReset?.pendingFactoryReset === true;
 
-    // Build the partial update for Device — battery counters (if any battery
-    // samples in this batch) merged with metadata fields the firmware reported.
+    // Build the partial update for Device — metadata fields the firmware
+    // reported, merged with the lastSeen timestamp and any reset-flag clear.
     const deviceUpdate: Record<string, unknown> = { lastSeenAt: now };
     if (deviceMeta?.firmwareVersion) deviceUpdate.firmwareVersion = deviceMeta.firmwareVersion;
     if (deviceMeta?.wifiRssi != null) deviceUpdate.wifiRssi = deviceMeta.wifiRssi;
     if (factoryResetPending) deviceUpdate.pendingFactoryReset = false;
-
-    if (samplesWithBattery.length > 0) {
-      const dev = await prisma.device.findUnique({
-        where: { id: req.deviceId! },
-        select: { cyclesSinceLastCharge: true, cyclesPerFullBattery: true },
-      });
-      if (dev) {
-        const upd = await updateBatteryCounters({
-          deviceId: req.deviceId!,
-          device: dev,
-          priorVoltage: priorBatteryVoltage,
-          freshBatterySamples: samplesWithBattery.map((s) => ({ raw: s.batteryRaw, mv: s.batteryMv })),
-        });
-        deviceUpdate.cyclesSinceLastCharge = upd.newCounter;
-        deviceUpdate.cyclesPerFullBattery = upd.newPerFull;
-        if (upd.chargeDetected) deviceUpdate.lastChargeAt = now;
-      }
-    }
 
     await prisma.device.update({ where: { id: req.deviceId! }, data: deviceUpdate });
 
@@ -181,7 +148,7 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
     const device = await prisma.device.findUnique({
       where: { id: req.deviceId! },
       include: {
-        user: { select: { id: true, quietHoursStartMin: true, quietHoursEndMin: true, timezone: true } },
+        user: { select: { id: true } },
         plant: { include: { species: true } },
       },
     });
@@ -249,11 +216,6 @@ export async function measurementRoutes(app: FastifyInstance): Promise<void> {
           measuredAt,
         },
         newVerdict: verdict,
-        quietHours: {
-          startMin: device.user.quietHoursStartMin ?? null,
-          endMin: device.user.quietHoursEndMin ?? null,
-          timezone: device.user.timezone,
-        },
       });
 
       await prisma.plant.update({

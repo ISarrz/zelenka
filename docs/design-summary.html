@@ -137,9 +137,7 @@ em.term{font-family:'Fraunces',serif;font-style:italic;color:var(--doc-text);fon
     <li><a href="#expanded">Графики и журнал</a></li>
     <li><a href="#plant-card">Карточка растения</a></li>
     <li><a href="#device-management">Управление датчиком</a></li>
-    <li><a href="#firmware">Обновление прошивки</a></li>
     <li><a href="#profile">Профиль и настройки</a></li>
-    <li><a href="#quiet-hours">Тихие часы</a></li>
     <li><a href="#dialogs">Диалоги подтверждения</a></li>
     <li><a href="#multi-plant">Несколько растений</a></li>
     <li><a href="#edge">Edge-состояния</a></li>
@@ -167,9 +165,9 @@ em.term{font-family:'Fraunces',serif;font-style:italic;color:var(--doc-text);fon
     <li><strong>Оранжевый</strong> — нужно внимание скоро</li>
     <li><strong>Красный</strong> — тревога, действие сейчас</li>
     <li><strong>Синий</strong> — датчик видит движение к норме после проблемы (восстановление)</li>
-    <li><strong>Пунктирный серый</strong> — изучаем место / нет данных пока</li>
+    <li><strong>Пунктирный серый</strong> — нет данных (датчик ещё не прислал замер или молчит)</li>
   </ul>
-  <p>Приоритет на агрегатном кольце главного экрана: <em class="term">красный → оранжевый → синий → пунктирный → зелёный</em>. Критические значения переопределяют холодный старт.</p>
+  <p>Приоритет на агрегатном кольце главного экрана: <em class="term">красный → оранжевый → синий → пунктирный → зелёный</em>.</p>
 
   <h3>Цветовая система</h3>
   <p>Текст всегда нейтральный, статус несут <em class="term">графические элементы</em>: кольцо, окантовка ячеек, плашки, линия и точки графика. Плашки используют семантические переменные <span class="kbd">info / warning / danger / success</span> — они адаптируются под тему. Насыщенные хексы только для плотных графических акцентов (кольцо, окантовка).</p>
@@ -180,8 +178,8 @@ em.term{font-family:'Fraunces',serif;font-style:italic;color:var(--doc-text);fon
   <h3>Уведомления — действия, не алармы</h3>
   <p>Текст уведомления — это инструкция, а не сообщение о проблеме. <em class="term">«Полей фикус 150–200 мл тёплой воды»</em>, а не «Влажность ниже порога». Логика триггеров учитывает <em class="term">тренд</em>: если влажность пошла вверх — повторный пуш «полей» не приходит, даже если до нормы ещё не дошло.</p>
 
-  <h3>Холодный старт</h3>
-  <p>Первые 48 часов после установки датчика приложение «изучает место». На главном — пунктирное серое кольцо, числа без оценки. После 48 часов либо тишина (всё ок), либо рекомендация переставить с объяснением «почему».</p>
+  <h3>Первые сутки и проверка места</h3>
+  <p>Отдельного режима «холодного старта» с серым кольцом нет: главный экран показывает оценку с первого же замера. Исключение — свет: его оценка опирается на «часы яркого света за сутки», поэтому первые 24 часа после привязки освещение остаётся нейтральным (без вердикта), пока не накопится полная история дня. Через 48 часов отдельная фоновая проверка решает, подходит ли место, и при необходимости присылает рекомендацию переставить с объяснением «почему».</p>
 
   <h3>Captive portal · continuity и платформы</h3>
   <p>Подключение датчика делится между AP-режимом датчика и Wi-Fi роутером пользователя. Между ними — пропасть: телефон <em class="term">физически не может</em> остаться на одной странице через смену сети. Поэтому captive portal заканчивается финальным экраном «настройка передана», а в PWA пользователя ждёт экран ожидания с polling сервера. Кнопок-переходов «открыть приложение» нет — они бы обещали действие, которого технически не существует.</p>
@@ -657,7 +655,7 @@ em.term{font-family:'Fraunces',serif;font-style:italic;color:var(--doc-text);fon
         <div style="display:flex;gap:12px;align-items:flex-start"><i class="ti ti-wind" style="font-size:20px;color:var(--color-text-secondary);margin-top:1px"></i><div style="flex:1"><div style="font-size:14px;font-weight:500">Без сквозняков</div><div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px;line-height:1.5">Подальше от часто открываемых окон и балконных дверей.</div></div></div>
         <div style="display:flex;gap:12px;align-items:flex-start"><i class="ti ti-arrows-move" style="font-size:20px;color:var(--color-text-secondary);margin-top:1px"></i><div style="flex:1"><div style="font-size:14px;font-weight:500">Не двигайте часто</div><div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px;line-height:1.5">Фикус не любит переездов — выберите место и оставьте.</div></div></div>
       </div>
-      <div style="margin:18px 20px 0;padding:10px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);display:flex;align-items:flex-start;gap:8px"><i class="ti ti-info-circle" style="font-size:16px;color:var(--color-text-secondary);margin-top:1px"></i><div style="font-size:12px;color:var(--color-text-secondary);line-height:1.5">Первые двое суток собираем данные о месте. Показатели появятся, но без оценки.</div></div>
+      <div style="margin:18px 20px 0;padding:10px 12px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);display:flex;align-items:flex-start;gap:8px"><i class="ti ti-info-circle" style="font-size:16px;color:var(--color-text-secondary);margin-top:1px"></i><div style="font-size:12px;color:var(--color-text-secondary);line-height:1.5">Показатели и оценка появятся сразу. Через двое суток проверим, подходит ли место, и подскажем, если стоит переставить.</div></div>
       <div style="padding:18px 20px 22px"><button style="width:100%;padding:13px;font-size:15px;font-weight:500;background:#639922;color:#fff;border:none;border-radius:var(--border-radius-md)">Поставил, готово</button></div>
     </div>
   </div></div>
@@ -667,7 +665,7 @@ em.term{font-family:'Fraunces',serif;font-style:italic;color:var(--doc-text);fon
     <ul>
       <li>Не пытаемся быть энциклопедией — 4 ключевых пункта вместо длинного списка</li>
       <li>«Если место не подойдёт, мы скажем» — снимает страх ошибки до неё</li>
-      <li>Плашка о 48 часах холодного старта готовит к нейтральному виду главного экрана</li>
+      <li>Плашка о проверке места через 48 часов снимает страх «поставил не туда»</li>
     </ul>
   </div>
 </section>
@@ -992,20 +990,19 @@ em.term{font-family:'Fraunces',serif;font-style:italic;color:var(--doc-text);fon
 <section id="device-management">
   <div class="sec-num">Раздел</div>
   <h2>Управление <em>датчиком</em></h2>
-  <p class="intro">Открывается из карточки растения и из профиля по chevron'у на блоке датчика. Состояние, переподключение, замена, отвязка. Заголовок экрана — ID датчика (A4F2), а не «Управление»; при нескольких датчиках сразу понятно, в каком ты.</p>
+  <p class="intro">Открывается из карточки растения и из профиля по chevron'у на блоке датчика. Состояние, переподключение, отвязка. Заголовок экрана — ID датчика (A4F2), а не «Управление»; при нескольких датчиках сразу понятно, в каком ты.</p>
 
   <div class="frames"><div class="frame-wrap">
     <div style="max-width:340px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-xl);overflow:hidden">
       <div style="display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:0.5px solid var(--color-border-tertiary)"><i class="ti ti-arrow-left" style="font-size:20px"></i><div style="flex:1;font-size:16px;font-weight:500">Датчик A4F2</div></div>
       <div style="display:flex;align-items:center;gap:14px;padding:18px 20px"><div style="width:56px;height:56px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center"><i class="ti ti-broadcast" style="font-size:28px;color:#639922"></i></div><div style="flex:1"><div style="font-size:15px;font-weight:500">На связи</div><div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">в горшке с Фикусом · последние данные минуту назад</div></div></div>
       <div style="padding:6px 20px 0;font-size:12px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-top:0.5px solid var(--color-border-tertiary);padding-top:14px">Состояние</div>
-      <div style="display:flex;align-items:center;gap:12px;padding:12px 20px"><i class="ti ti-battery-3" style="font-size:22px;color:var(--color-text-secondary);flex-shrink:0"></i><div style="flex:1"><div style="font-size:14px">Аккумулятор</div><div style="font-size:11px;color:var(--color-text-secondary)">примерно 4 месяца до зарядки</div></div><span style="font-size:14px;font-weight:500">78 %</span></div>
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 20px"><i class="ti ti-battery-3" style="font-size:22px;color:var(--color-text-secondary);flex-shrink:0"></i><div style="flex:1"><div style="font-size:14px">Аккумулятор</div><div style="font-size:11px;color:var(--color-text-secondary)">3.95 В</div></div><span style="font-size:14px;font-weight:500">средний</span></div>
       <div style="display:flex;align-items:center;gap:12px;padding:12px 20px"><i class="ti ti-wifi" style="font-size:22px;color:var(--color-text-secondary);flex-shrink:0"></i><div style="flex:1"><div style="font-size:14px">Сигнал Wi-Fi</div><div style="font-size:11px;color:var(--color-text-secondary)">сеть HomeNet · хороший</div></div><span style="font-size:13px;color:var(--color-text-secondary)">−52 dBm</span></div>
       <div style="display:flex;align-items:center;gap:12px;padding:12px 20px"><i class="ti ti-cpu" style="font-size:22px;color:var(--color-text-secondary);flex-shrink:0"></i><div style="flex:1"><div style="font-size:14px">Прошивка</div><div style="font-size:11px;color:var(--color-text-secondary)">1.2.0 — актуальная версия</div></div><i class="ti ti-circle-check" style="font-size:18px;color:#639922"></i></div>
       <div style="padding:6px 20px 0;font-size:12px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-top:0.5px solid var(--color-border-tertiary);padding-top:14px;margin-top:8px">Подключение</div>
       <div style="display:flex;align-items:center;gap:12px;padding:12px 20px"><i class="ti ti-refresh" style="font-size:20px;color:var(--color-text-secondary);flex-shrink:0"></i><div style="flex:1"><div style="font-size:14px">Переподключить к другому Wi-Fi</div><div style="font-size:11px;color:var(--color-text-secondary)">если сменили роутер или переехали</div></div><i class="ti ti-chevron-right" style="font-size:16px;color:var(--color-text-tertiary)"></i></div>
-      <div style="padding:6px 20px 0;font-size:12px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-top:0.5px solid var(--color-border-tertiary);padding-top:14px;margin-top:8px">Замена и удаление</div>
-      <div style="display:flex;align-items:center;gap:12px;padding:12px 20px"><i class="ti ti-arrows-exchange" style="font-size:20px;color:var(--color-text-secondary);flex-shrink:0"></i><div style="flex:1"><div style="font-size:14px">Заменить датчик</div><div style="font-size:11px;color:var(--color-text-secondary)">если этот сломался — настроим новый и перенесём историю</div></div><i class="ti ti-chevron-right" style="font-size:16px;color:var(--color-text-tertiary)"></i></div>
+      <div style="padding:6px 20px 0;font-size:12px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-top:0.5px solid var(--color-border-tertiary);padding-top:14px;margin-top:8px">Удаление</div>
       <div style="border-top:0.5px solid var(--color-border-tertiary);margin-top:8px;padding:18px 20px 22px;text-align:center"><span style="font-size:14px;color:var(--color-text-danger)">Отвязать датчик</span></div>
     </div>
   </div></div>
@@ -1014,64 +1011,7 @@ em.term{font-family:'Fraunces',serif;font-style:italic;color:var(--doc-text);fon
     <h4>Ключевые решения</h4>
     <ul>
       <li><strong>Hero-блок «На связи»</strong> отвечает на главный вопрос «ок ли он?» с первого взгляда</li>
-      <li><strong>«Заменить датчик» обещает перенести историю</strong> — пользователь не боится менять и не теряет накопленные данные о растении</li>
-      <li><strong>Прошивка показывает checkmark</strong>, когда актуальна. Если бы было доступно обновление — строка стала бы кликабельной с подзаголовком «доступно 1.3.0»</li>
-    </ul>
-  </div>
-</section>
-
-<hr class="section-rule">
-
-
-<section id="firmware">
-  <div class="sec-num">Раздел</div>
-  <h2>Обновление <em>прошивки</em></h2>
-  <p class="intro">Открывается из экрана управления датчиком, когда строка прошивки становится кликабельной («доступно 1.3.0»). Три состояния: готов к обновлению → в процессе → готово. Откат на старую версию — автоматический, если обновление не пройдёт; отдельный экран ошибки не нужен.</p>
-
-  <div class="frames">
-
-    <div class="frame-wrap">
-      <div class="frame-caption">Готов к обновлению</div>
-      <div style="max-width:340px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-xl);overflow:hidden">
-        <div style="display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:0.5px solid var(--color-border-tertiary)"><i class="ti ti-arrow-left" style="font-size:20px"></i><div style="flex:1;font-size:16px;font-weight:500">Прошивка</div></div>
-        <div style="display:flex;justify-content:center;padding:28px 16px 8px"><div style="width:72px;height:72px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center"><i class="ti ti-cpu" style="font-size:36px;color:var(--color-text-secondary)"></i></div></div>
-        <div style="text-align:center;padding:14px 20px 0"><div style="font-size:20px;font-weight:500;line-height:1.25">Доступно обновление</div><div style="display:inline-flex;align-items:center;gap:8px;margin-top:10px;font-size:14px;color:var(--color-text-secondary)"><span>1.2.0</span><i class="ti ti-arrow-right" style="font-size:14px"></i><span style="color:var(--color-text-primary);font-weight:500">1.3.0</span></div></div>
-        <div style="margin:18px 20px 0;padding:14px;background:var(--color-background-secondary);border-radius:var(--border-radius-md)"><div style="font-size:11px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Что нового</div><div style="font-size:13px;color:var(--color-text-secondary);line-height:1.5">Точнее измеряем влажность почвы. Исправлены ошибки связи при слабом Wi-Fi.</div></div>
-        <div style="margin:14px 20px 0;padding:11px 14px;border-left:2px solid var(--color-border-secondary);display:flex;align-items:flex-start;gap:10px"><i class="ti ti-info-circle" style="font-size:16px;color:var(--color-text-tertiary);margin-top:1px"></i><div style="font-size:11px;color:var(--color-text-tertiary);line-height:1.5">Подключите датчик к питанию. Займёт около 3 минут — показания не придут.</div></div>
-        <div style="padding:20px 20px 8px"><button style="width:100%;padding:13px;font-size:15px;font-weight:500;background:#639922;color:#fff;border:none;border-radius:var(--border-radius-md)">Обновить</button></div>
-        <div style="text-align:center;padding:8px 20px 22px;font-size:13px;color:var(--color-text-secondary)">Не сейчас</div>
-      </div>
-    </div>
-
-    <div class="frame-wrap">
-      <div class="frame-caption">В процессе</div>
-      <div style="max-width:340px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-xl);overflow:hidden">
-        <div style="display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:0.5px solid var(--color-border-tertiary)"><div style="width:20px"></div><div style="flex:1;font-size:16px;font-weight:500">Прошивка</div></div>
-        <div style="display:flex;justify-content:center;padding:42px 16px 8px"><div style="position:relative;width:84px;height:84px"><div style="position:absolute;inset:0;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center"><i class="ti ti-cpu" style="font-size:38px;color:var(--color-text-secondary)"></i></div><svg style="position:absolute;inset:-6px" viewBox="0 0 96 96"><circle cx="48" cy="48" r="46" fill="none" stroke="var(--color-background-secondary)" stroke-width="2"/><circle cx="48" cy="48" r="46" fill="none" stroke="#639922" stroke-width="2" stroke-dasharray="170 290" stroke-linecap="round" transform="rotate(-90 48 48)"/></svg></div></div>
-        <div style="text-align:center;padding:14px 24px 0"><div style="font-size:20px;font-weight:500;line-height:1.25">Устанавливаем 1.3.0</div><div style="font-size:13px;color:var(--color-text-secondary);margin-top:10px;line-height:1.55">Не закрывайте приложение.</div></div>
-        <div style="padding:24px 24px 0"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--color-text-secondary);margin-bottom:6px"><span>Шаг 2 из 3 · установка</span><span>~ 2 мин</span></div><div style="height:6px;background:var(--color-background-secondary);border-radius:3px;overflow:hidden"><div style="width:60%;height:100%;background:#639922"></div></div></div>
-        <div style="height:60px"></div>
-      </div>
-    </div>
-
-    <div class="frame-wrap">
-      <div class="frame-caption">Готово</div>
-      <div style="max-width:340px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-xl);overflow:hidden">
-        <div style="display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:0.5px solid var(--color-border-tertiary)"><i class="ti ti-arrow-left" style="font-size:20px"></i><div style="flex:1;font-size:16px;font-weight:500">Прошивка</div></div>
-        <div style="display:flex;justify-content:center;padding:38px 16px 8px"><div style="width:84px;height:84px;border-radius:50%;background:#639922;display:flex;align-items:center;justify-content:center"><i class="ti ti-check" style="font-size:42px;color:#fff"></i></div></div>
-        <div style="text-align:center;padding:14px 24px 0"><div style="font-size:20px;font-weight:500;line-height:1.25">Обновление установлено</div><div style="font-size:13px;color:var(--color-text-secondary);margin-top:10px;line-height:1.55">Датчик A4F2 теперь на версии <span style="color:var(--color-text-primary);font-weight:500">1.3.0</span>. Показания возобновятся через минуту.</div></div>
-        <div style="padding:32px 20px 22px"><button style="width:100%;padding:13px;font-size:15px;font-weight:500;background:#639922;color:#fff;border:none;border-radius:var(--border-radius-md)">Готово</button></div>
-      </div>
-    </div>
-
-  </div>
-
-  <div class="notes">
-    <h4>Ключевые решения</h4>
-    <ul>
-      <li><strong>Требование питания — в первом экране</strong>, не во втором. Если упомянуть в процессе — уже поздно, обновление идёт, а пользователь только понял, что нужен кабель.</li>
-      <li><strong>Нет back-arrow в процессе</strong> — нельзя выйти и закрыть приложение, иначе риск bricked-датчика</li>
-      <li><strong>Откат автоматический</strong> при сбое — отдельного экрана ошибки нет, пользователь увидит «прошивка 1.2.0 актуальная» в управлении датчиком</li>
+      <li><strong>Прошивка показывает checkmark</strong>, когда актуальна. Если доступна новая версия — подзаголовок «доступна 1.3.0, обновится сама». Отдельного экрана обновления нет: OTA проходит в фоне, строка чисто информационная</li>
     </ul>
   </div>
 </section>
@@ -1102,43 +1042,10 @@ em.term{font-family:'Fraunces',serif;font-style:italic;color:var(--doc-text);fon
 
 <hr class="section-rule">
 
-
-<section id="quiet-hours">
-  <div class="sec-num">Раздел</div>
-  <h2>Тихие <em>часы</em></h2>
-  <p class="intro">Редактирование интервала, в который уведомления не приходят. По умолчанию глушим всё — иначе тихие часы превращаются в систему с приоритетами. Срочные ночные события пользователь увидит утром одним сводным. Опциональное исключение для критических алертов — для тех, кто готов жертвовать сном ради растения.</p>
-
-  <div class="frames"><div class="frame-wrap">
-    <div style="max-width:340px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-xl);overflow:hidden">
-      <div style="display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:0.5px solid var(--color-border-tertiary)"><i class="ti ti-arrow-left" style="font-size:20px"></i><div style="flex:1;font-size:16px;font-weight:500">Тихие часы</div></div>
-      <div style="padding:18px 20px 4px"><div style="font-size:13px;color:var(--color-text-secondary);line-height:1.55">В это время уведомления не приходят. Если случится что-то срочное — увидите утром одним сообщением.</div></div>
-      <div style="display:flex;align-items:center;gap:12px;padding:16px 20px;border-top:0.5px solid var(--color-border-tertiary);margin-top:14px"><div style="flex:1"><div style="font-size:14px;font-weight:500">Включить тихие часы</div></div><div style="width:38px;height:22px;border-radius:11px;background:#639922;position:relative;flex-shrink:0"><div style="position:absolute;top:2px;left:18px;width:18px;height:18px;border-radius:50%;background:#fff"></div></div></div>
-      <div style="padding:0 20px 0;font-size:12px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-top:0.5px solid var(--color-border-tertiary);padding-top:14px">Интервал</div>
-      <div style="padding:14px 20px 0"><div style="display:flex;align-items:center;gap:12px"><div style="flex:1;padding:14px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);text-align:center"><div style="font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.5px">с</div><div style="font-size:24px;font-weight:500;margin-top:4px;letter-spacing:-0.5px">22:00</div></div><div style="color:var(--color-text-tertiary);font-size:14px">—</div><div style="flex:1;padding:14px;background:var(--color-background-secondary);border-radius:var(--border-radius-md);text-align:center"><div style="font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.5px">до</div><div style="font-size:24px;font-weight:500;margin-top:4px;letter-spacing:-0.5px">08:00</div></div></div><div style="font-size:11px;color:var(--color-text-tertiary);text-align:center;margin-top:10px">10 часов тишины</div></div>
-      <div style="padding:24px 20px 0"><div style="font-size:11px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Быстрая настройка</div><div style="display:flex;gap:8px;flex-wrap:wrap"><div style="padding:6px 12px;border:0.5px solid var(--color-border-secondary);border-radius:14px;font-size:12px;color:var(--color-text-secondary)">23:00 – 07:00</div><div style="padding:6px 12px;border:1.5px solid var(--color-text-primary);border-radius:14px;font-size:12px;font-weight:500">22:00 – 08:00</div><div style="padding:6px 12px;border:0.5px solid var(--color-border-secondary);border-radius:14px;font-size:12px;color:var(--color-text-secondary)">21:00 – 09:00</div></div></div>
-      <div style="padding:20px 20px 0;font-size:12px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.5px;border-top:0.5px solid var(--color-border-tertiary);margin-top:20px;padding-top:14px">Исключения</div>
-      <div style="padding:14px 20px 0"><div style="display:flex;align-items:flex-start;gap:12px"><div style="flex:1"><div style="font-size:14px;font-weight:500">Разрешить критические алерты</div><div style="font-size:12px;color:var(--color-text-secondary);margin-top:4px;line-height:1.5">Только красные события — серьёзная угроза растению. Например, температура ниже 12°C или потеря связи с датчиком.</div></div><div style="width:38px;height:22px;border-radius:11px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);position:relative;flex-shrink:0;margin-top:1px"><div style="position:absolute;top:1.5px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.15)"></div></div></div></div>
-      <div style="padding:22px 20px 22px;margin-top:8px"><button style="width:100%;padding:13px;font-size:15px;font-weight:500;background:#639922;color:#fff;border:none;border-radius:var(--border-radius-md)">Сохранить</button></div>
-    </div>
-  </div></div>
-
-  <div class="notes">
-    <h4>Ключевые решения</h4>
-    <ul>
-      <li><strong>Объяснение поведения сверху</strong> снимает главный страх «а если случится что-то срочное ночью?»</li>
-      <li><strong>Пресеты</strong> (поздно/средне/рано) сократят работу для большинства — мало кому нужны произвольные значения</li>
-      <li><strong>Отдельная кнопка «Сохранить»</strong> — изменения не уходят в момент тапа по picker'у времени, иначе случайный тап менял бы поведение пушей</li>
-    </ul>
-  </div>
-</section>
-
-<hr class="section-rule">
-
-
 <section id="dialogs">
   <div class="sec-num">Раздел</div>
   <h2>Диалоги <em>подтверждения</em></h2>
-  <p class="intro">Тон и цвет соответствуют тяжести действия: удаление — danger (история необратимо теряется), замена датчика — nominal (наоборот, восстановительное), выход — нейтрально (вернуться легко).</p>
+  <p class="intro">Тон и цвет соответствуют тяжести действия: удаление — danger (история необратимо теряется), выход — нейтрально (вернуться легко).</p>
 
   <div class="frames">
 
@@ -1150,18 +1057,6 @@ em.term{font-family:'Fraunces',serif;font-style:italic;color:var(--doc-text);fon
           <div style="font-size:17px;font-weight:500;text-align:center;line-height:1.3">Удалить Фикус?</div>
           <div style="font-size:13px;color:var(--color-text-secondary);text-align:center;margin-top:10px;line-height:1.55">Вся история показаний и событий за 4 месяца пропадёт. Датчик отвяжется от растения — его можно будет настроить заново.</div>
           <div style="display:flex;flex-direction:column;gap:8px;margin-top:20px"><button style="width:100%;padding:11px;font-size:14px;font-weight:500;background:#E24B4A;color:#fff;border:none;border-radius:var(--border-radius-md)">Удалить</button><button style="width:100%;padding:11px;font-size:14px;background:transparent;color:var(--color-text-primary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md)">Отмена</button></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="frame-wrap">
-      <div class="frame-caption">Заменить датчик</div>
-      <div style="position:relative;width:300px;height:380px;background:rgba(35,34,32,0.55);border-radius:var(--border-radius-xl);overflow:hidden;display:flex;align-items:center;justify-content:center;padding:20px">
-        <div style="width:100%;background:var(--color-background-primary);border-radius:var(--border-radius-lg);padding:22px 20px">
-          <div style="display:flex;justify-content:center;margin-bottom:14px"><div style="width:48px;height:48px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center"><i class="ti ti-arrows-exchange" style="font-size:24px;color:var(--color-text-secondary)"></i></div></div>
-          <div style="font-size:17px;font-weight:500;text-align:center;line-height:1.3">Заменить датчик A4F2?</div>
-          <div style="font-size:13px;color:var(--color-text-secondary);text-align:center;margin-top:10px;line-height:1.55">Подключим новый датчик, перенесём на него историю Фикуса. Понадобится калибровка — это занимает минуту.</div>
-          <div style="display:flex;flex-direction:column;gap:8px;margin-top:20px"><button style="width:100%;padding:11px;font-size:14px;font-weight:500;background:#639922;color:#fff;border:none;border-radius:var(--border-radius-md)">Подключить новый</button><button style="width:100%;padding:11px;font-size:14px;background:transparent;color:var(--color-text-primary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md)">Отмена</button></div>
         </div>
       </div>
     </div>
@@ -1439,16 +1334,11 @@ em.term{font-family:'Fraunces',serif;font-style:italic;color:var(--doc-text);fon
   <em class="term">Заголовок:</em> Аккумулятор датчика A4F2 на 12%<br>
   <em class="term">Тело:</em> Зарядите в ближайшие дни.</p>
 
-  <p><strong>Утреннее сводное после тихих часов</strong><br>
-  <em class="term">Заголовок:</em> У Фикуса ночью<br>
-  <em class="term">Тело:</em> Температура упала до 16°C, потом восстановилась. Подробности в Ленте.</p>
-
   <h3>Защита от спама</h3>
   <ul class="tight">
     <li><strong>Учёт тренда.</strong> Если показатель уже идёт в правильную сторону (влажность растёт после полива), повторный пуш «полей» не приходит, даже если до нормы ещё не дошли.</li>
     <li><strong>Кулдаун на повтор.</strong> Между двумя пушами одного типа — минимум 12 часов.</li>
-    <li><strong>Дневной лимит.</strong> Не больше 3 пушей в сутки на одно растение. Если триггеров больше — копим в Ленту, утром одно сводное.</li>
-    <li><strong>Тихие часы.</strong> В заданном интервале ничего не пушим. Все события ночи — в одно сводное утром. Глушим всё, включая критичные, ради простоты.</li>
+    <li><strong>Дневной лимит.</strong> Не больше 3 пушей в сутки на одно растение. Если триггеров больше — остальные копятся только в Ленту.</li>
   </ul>
 
   <h3>Как это выглядит на экране блокировки</h3>

@@ -19,15 +19,9 @@ model User {
   email     String   @unique
   createdAt DateTime @default(now())
 
-  // IANA timezone (e.g. "Europe/Moscow", "Asia/Tashkent"). Determines what
-  // "local time" means for this user's quiet hours and morning digest.
-  // Detected on first login from the browser's Intl APIs.
+  // IANA timezone (e.g. "Europe/Moscow", "Asia/Tashkent"). Detected on first
+  // login from the browser's Intl APIs; surfaced read-only in Settings.
   timezone  String   @default("Europe/Moscow")
-
-  // Quiet hours, minutes-from-midnight in the user's local time. Nullable =
-  // no quiet hours configured. Both inclusive: e.g. start=23*60, end=7*60.
-  quietHoursStartMin Int?
-  quietHoursEndMin   Int?
 
   magicLinks       MagicLinkToken[]
   sessions         Session[]
@@ -72,14 +66,6 @@ model Device {
   user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   claimedAt   DateTime?
-
-  // Battery self-learning. cyclesSinceLastCharge counts wake-cycles since the
-  // last detected charge event (voltage jump ≥ 0.15 V). On charge,
-  // cyclesPerFullBattery gets a rolling-average update and the counter resets.
-  // Both null on a fresh device — UI shows "ETA appears after first charge".
-  cyclesSinceLastCharge Int       @default(0)
-  cyclesPerFullBattery  Int?
-  lastChargeAt          DateTime?
 
   // Soil-moisture calibration: raw ADC reading in air ("dry" baseline) and
   // in water ("wet" baseline). Set by the calibration step right after
@@ -154,7 +140,7 @@ model Plant {
   identifiedAt DateTime?
   // Last computed ring state — used to detect "entered problem zone"
   // transitions for push triggering.
-  lastRingStatus String?  // "cold" | "ok" | "warn" | "alert"
+  lastRingStatus String?  // "ok" | "warn" | "alert"
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 

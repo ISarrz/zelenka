@@ -1,7 +1,6 @@
 import { prisma } from '../db.js';
 import { sendPushToUser } from './push.js';
 import type { CareThresholds } from './thresholds.js';
-import { minutesOfDayInTz } from './tz.js';
 import type { RingStatus, Verdict } from './verdict.js';
 
 // Triggers we ship in Sprint 4. Mapped to the design doc's 12-trigger table —
@@ -10,8 +9,6 @@ import type { RingStatus, Verdict } from './verdict.js';
 //       this trigger's severity), AND
 //   (b) cooldown hasn't fired this kind for this plant in the last 12h, AND
 //   (c) we haven't already sent 3 pushes for this plant in the last 24h.
-//
-// Quiet hours mute *everything* (per the doc — simpler is safer).
 const COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const DAILY_CAP_MS = 24 * 60 * 60 * 1000;
 const DAILY_CAP = 3;
@@ -56,21 +53,6 @@ export interface MeasurementCtx {
   measuredAt: Date;
 }
 
-export interface QuietHours {
-  startMin: number | null;
-  endMin: number | null;
-  timezone: string;
-}
-
-export function inQuietHours(now: Date, q: QuietHours): boolean {
-  if (q.startMin == null || q.endMin == null) return false;
-  const m = minutesOfDayInTz(now, q.timezone);
-  // Windows that wrap midnight (e.g. 23:00 → 07:00) need OR; same-day uses AND.
-  return q.startMin <= q.endMin
-    ? m >= q.startMin && m <= q.endMin
-    : m >= q.startMin || m <= q.endMin;
-}
-
 export function copy(
   kind: TriggerKind,
   plantName: string,
@@ -102,18 +84,18 @@ export function detectTriggers(plant: PlantCtx, m: MeasurementCtx, newVerdict: V
   const out: TriggerKind[] = [];
   const prev = plant.prevRingStatus;
 
-  // Soil: only fire on transition (was not-warn/alert previously, now is).
+  // Fire only on *entering* a problem zone — the previous ring wasn't already
+  // warn/alert. Covers ok, no-prior-status, and any legacy stored value.
+  const wasCalm = prev !== 'warn' && prev !== 'alert';
+
+  // Soil: only fire on transition (was calm previously, now warn/alert).
   const soilSev = newVerdict.perParam.soilMoistureRaw;
-  if ((prev === 'ok' || prev === 'cold' || prev == null) && soilSev === 'alert')
-    out.push('soil_red');
-  else if ((prev === 'ok' || prev === 'cold' || prev == null) && soilSev === 'warn')
-    out.push('soil_orange');
+  if (wasCalm && soilSev === 'alert') out.push('soil_red');
+  else if (wasCalm && soilSev === 'warn') out.push('soil_orange');
 
   const tempSev = newVerdict.perParam.temperatureC;
-  if ((prev === 'ok' || prev === 'cold' || prev == null) && tempSev === 'alert')
-    out.push('temp_red');
-  else if ((prev === 'ok' || prev === 'cold' || prev == null) && tempSev === 'warn')
-    out.push('temp_orange');
+  if (wasCalm && tempSev === 'alert') out.push('temp_red');
+  else if (wasCalm && tempSev === 'warn') out.push('temp_orange');
 
   // Sharp temperature drop — independent of zone; fires if dropped ≥5°C/hour.
   if (
@@ -168,9 +150,7 @@ async function shouldSuppress(
   plant: PlantCtx,
   kind: TriggerKind,
   now: Date,
-  quiet: QuietHours,
 ): Promise<string | null> {
-  if (inQuietHours(now, quiet)) return 'quiet_hours';
   if (isImprovingTrend(kind, plant)) return 'trending';
 
   // Cooldown — same kind in last 12 h?
@@ -199,15 +179,14 @@ export async function evaluatePushTriggers(args: {
   plant: PlantCtx;
   measurement: MeasurementCtx;
   newVerdict: Verdict;
-  quietHours: QuietHours;
 }): Promise<void> {
-  const { plant, measurement, newVerdict, quietHours } = args;
+  const { plant, measurement, newVerdict } = args;
   const triggers = detectTriggers(plant, measurement, newVerdict);
   if (triggers.length === 0) return;
   const now = new Date();
 
   for (const kind of triggers) {
-    const reason = await shouldSuppress(plant, kind, now, quietHours);
+    const reason = await shouldSuppress(plant, kind, now);
     const { title, body } = copy(kind, plant.name, plant.thresholds, plant.notificationTexts);
 
     if (reason) {

@@ -3,36 +3,26 @@ import { describe, it } from 'node:test';
 import { GENERIC_THRESHOLDS, type CareThresholds } from './thresholds.js';
 import { evaluate, type Reading } from './verdict.js';
 
-// Helpers for "identifiedAt" relative to the 48h cold-start / 24h sun-warmup
-// windows. null = treat as long-bound (no cold start, no warmup).
+// Helpers for "identifiedAt" relative to the 24h sun-warmup window.
+// null = treat as long-bound (no warmup).
 const HOUR = 60 * 60 * 1000;
-const longAgo = () => new Date(Date.now() - 72 * HOUR); // past both windows
-const justNow = () => new Date(Date.now() - 1 * HOUR);  // inside both windows
+const longAgo = () => new Date(Date.now() - 72 * HOUR); // past the warmup window
+const justNow = () => new Date(Date.now() - 1 * HOUR);  // inside the warmup window
 
 // Minimal reading with everything unset; tests fill in only what they grade.
 const blank: Reading = {};
 
-describe('evaluate — cold start', () => {
-  it('returns cold ring while inside the 48h window regardless of values', () => {
-    const r: Reading = { temperatureC: 60, soilMoisturePct: 0 }; // wildly bad
+describe('evaluate — no cold-start masking', () => {
+  it('gives a real verdict immediately after binding (no 48h gray gate)', () => {
+    const r: Reading = { temperatureC: 5 }; // too cold
     const v = evaluate(r, GENERIC_THRESHOLDS, justNow());
-    assert.equal(v.ring, 'cold');
+    assert.equal(v.ring, 'alert');
+    assert.equal(v.perParam.temperatureC, 'alert');
   });
 
-  it('still computes perParam during cold start (used for transitions)', () => {
-    const v = evaluate({ temperatureC: 5 }, GENERIC_THRESHOLDS, justNow());
-    assert.equal(v.ring, 'cold');
-    assert.equal(v.perParam.temperatureC, 'alert'); // 5°C < warnMin 12
-  });
-
-  it('gives a real verdict once past the cold-start window', () => {
-    const v = evaluate({ temperatureC: 22 }, GENERIC_THRESHOLDS, longAgo());
-    assert.equal(v.ring, 'ok');
-  });
-
-  it('never cold when identifiedAt is null', () => {
-    const v = evaluate({ temperatureC: 22 }, GENERIC_THRESHOLDS, null);
-    assert.equal(v.ring, 'ok');
+  it('verdict is identical whether just-bound or long-bound', () => {
+    assert.equal(evaluate({ temperatureC: 22 }, GENERIC_THRESHOLDS, justNow()).ring, 'ok');
+    assert.equal(evaluate({ temperatureC: 22 }, GENERIC_THRESHOLDS, longAgo()).ring, 'ok');
   });
 });
 

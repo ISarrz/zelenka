@@ -9,7 +9,6 @@ import { batteryVoltage, voltageToEstimate } from './battery.js';
 import { sendPushToUser } from './push.js';
 import type { CareThresholds } from './thresholds.js';
 import { GENERIC_THRESHOLDS } from './thresholds.js';
-import { localDateKey, minutesOfDayInTz } from './tz.js';
 
 const COOLDOWN_24H = 24 * 60 * 60 * 1000;
 const COOLDOWN_7D = 7 * 24 * 60 * 60 * 1000;
@@ -17,9 +16,8 @@ const SENSOR_SILENT_HOURS = 24;
 const LIGHT_LOW_DAYS = 3;
 const HUMID_LOW_DAYS = 5;
 const ONBOARDING_HOURS = 48;
-const SAMPLE_INTERVAL_SEC = 600;
 
-function copyFor(kind: string, plantName: string, hint?: string): { title: string; body: string } {
+function copyFor(kind: string, plantName: string): { title: string; body: string } {
   const title = plantName.slice(0, 40);
   switch (kind) {
     case 'light_low':
@@ -33,7 +31,7 @@ function copyFor(kind: string, plantName: string, hint?: string): { title: strin
     case 'onboarding_place_alert':
       return { title, body: 'Место не очень — за двое суток показатели за пределами нормы.' };
     case 'battery_low_week':
-      return { title, body: hint ? `Зарядите датчик. ${hint}` : 'Зарядите датчик. Низкий заряд.' };
+      return { title, body: 'Зарядите датчик. Низкий заряд.' };
   }
   return { title, body: '' };
 }
@@ -50,9 +48,8 @@ async function fire(
   plantId: string,
   kind: string,
   plantName: string,
-  hint?: string,
 ): Promise<void> {
-  const { title, body } = copyFor(kind, plantName, hint);
+  const { title, body } = copyFor(kind, plantName);
   await sendPushToUser(userId, { title, body, url: '/', tag: `${plantId}:${kind}` })
     .catch(() => undefined);
   await prisma.notificationLog.create({
@@ -180,61 +177,8 @@ async function scanOnboarding(plants: PlantSnap[]): Promise<void> {
   }
 }
 
-async function scanMorningDigests(now: Date): Promise<void> {
-  const users = await prisma.user.findMany({
-    where: { quietHoursEndMin: { not: null } },
-    select: { id: true, quietHoursEndMin: true, timezone: true },
-  });
-
-  for (const u of users) {
-    const endMin = u.quietHoursEndMin!;
-    const localMinute = minutesOfDayInTz(now, u.timezone);
-    // Fire if "now" is within the 10-min window starting at quietHoursEnd in
-    // the user's local time, and we haven't already digested today.
-    const diff = (localMinute - endMin + 24 * 60) % (24 * 60);
-    if (diff > 10) continue;
-
-    const todayKey = localDateKey(now, u.timezone);
-    const alreadyToday = await prisma.notificationLog.findFirst({
-      where: {
-        userId: u.id,
-        kind: 'morning_digest',
-        // suppressedReason isn't used here, but cooldown-style queries elsewhere
-        // ignore suppressed rows, so we also pin to non-suppressed.
-        suppressedReason: null,
-      },
-      orderBy: { sentAt: 'desc' },
-    });
-    if (alreadyToday && localDateKey(alreadyToday.sentAt, u.timezone) === todayKey) continue;
-
-    // Pick suppressed pushes from the last 24h.
-    const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const suppressed = await prisma.notificationLog.findMany({
-      where: { userId: u.id, suppressedReason: 'quiet_hours', sentAt: { gte: since } },
-      orderBy: { sentAt: 'asc' },
-    });
-    if (suppressed.length === 0) continue;
-
-    const lines = suppressed
-      .map((r) => `• ${r.title}: ${r.body}`)
-      .slice(0, 5)
-      .join('\n');
-    const overflow = suppressed.length > 5 ? `\n…ещё ${suppressed.length - 5}` : '';
-    const title = 'Доброе утро';
-    const body = `${suppressed.length} событий за ночь.\n${lines}${overflow}`.slice(0, 300);
-
-    await sendPushToUser(u.id, { title, body, url: '/', tag: 'morning_digest' })
-      .catch(() => undefined);
-    await prisma.notificationLog.create({
-      data: { userId: u.id, plantId: null, kind: 'morning_digest', title, body },
-    });
-  }
-}
-
-// Weekly cadence — fires at most once every 7 days per plant. Per the
-// design doc "пуш = действие с числами": when the device has learned how
-// many cycles it gets per charge, the body carries an ETA; otherwise it
-// just says the battery is low.
+// Weekly cadence — fires at most once every 7 days per plant. Body just says
+// the battery is low (the per-cycle "days remaining" estimate was removed).
 async function scanBatteryLow(plants: PlantSnap[]): Promise<void> {
   for (const p of plants) {
     if (!p.deviceId) continue;
@@ -249,27 +193,15 @@ async function scanBatteryLow(plants: PlantSnap[]): Promise<void> {
     const estimate = voltageToEstimate(voltage);
     if (estimate !== 'low' && estimate !== 'critical') continue;
 
-    const device = await prisma.device.findUnique({
-      where: { id: p.deviceId },
-      select: { cyclesSinceLastCharge: true, cyclesPerFullBattery: true },
-    });
-    let hint: string | undefined;
-    if (device?.cyclesPerFullBattery != null) {
-      const remaining = Math.max(0, device.cyclesPerFullBattery - device.cyclesSinceLastCharge);
-      const days = Math.round((remaining * SAMPLE_INTERVAL_SEC) / 86400);
-      if (days >= 0 && days < 60) hint = `Хватит ещё на ~${days} дн.`;
-    }
-    await fire(p.userId, p.id, 'battery_low_week', p.name, hint);
+    await fire(p.userId, p.id, 'battery_low_week', p.name);
   }
 }
 
 export async function scanScheduledTriggers(): Promise<void> {
-  const now = new Date();
   const plants = await loadPlants();
   await scanLightLow(plants);
   await scanAirDry(plants);
   await scanSensorSilent(plants);
   await scanOnboarding(plants);
   await scanBatteryLow(plants);
-  await scanMorningDigests(now);
 }

@@ -142,43 +142,6 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
     return { status: 'queued' };
   });
 
-  // Replace a device with a fresh one, carrying history + plant binding over
-  // to the new device-id. Used when the physical sensor breaks. All-or-nothing
-  // transaction: measurements + plant are reassigned to the new id before the
-  // old row is dropped, so a partial failure leaves the user's data intact.
-  app.post('/api/devices/:id/replace', { preHandler: requireUser }, async (req, reply) => {
-    const { id } = req.params as { id: string };
-    const old = await prisma.device.findFirst({
-      where: { id, userId: req.userId },
-      include: { plant: true },
-    });
-    if (!old) { reply.code(404); return { error: 'not found' }; }
-
-    const result = await prisma.$transaction(async (tx) => {
-      const newDevice = await tx.device.create({
-        data: {
-          name: old.name,
-          deviceToken: newToken(24),
-          userId: req.userId!,
-        },
-      });
-      await tx.measurement.updateMany({
-        where: { deviceId: old.id },
-        data: { deviceId: newDevice.id },
-      });
-      if (old.plant) {
-        await tx.plant.update({
-          where: { id: old.plant.id },
-          data: { deviceId: newDevice.id },
-        });
-      }
-      await tx.device.delete({ where: { id: old.id } });
-      return newDevice;
-    });
-
-    return { device: result };
-  });
-
   // Bind a plant to a device. Creates the Plant row (one per device) or
   // updates it if the user already had one for this device.
   app.post('/api/devices/:id/bind-plant', { preHandler: requireUser }, async (req, reply) => {
@@ -373,11 +336,7 @@ export async function deviceRoutes(app: FastifyInstance): Promise<void> {
       verdict,
       thresholds,
       battery: latest
-        ? buildBatteryStatus(latest.batteryRaw, latest.batteryMv, {
-            cyclesSinceLastCharge: device.cyclesSinceLastCharge,
-            cyclesPerFullBattery: device.cyclesPerFullBattery,
-            lastChargeAt: device.lastChargeAt,
-          })
+        ? buildBatteryStatus(latest.batteryRaw, latest.batteryMv)
         : null,
     };
   });

@@ -34,7 +34,6 @@ const SWIPE_MAX_DY = 40;
 // Status palette mirrors tailwind.config.ts → status.* tokens. We need the
 // raw hex for the solid ring background and per-cell border colours.
 const RING_FILL: Record<RingStatus, string> = {
-  cold:  '#888780',
   ok:    '#639922',
   warn:  '#EF9F27',
   alert: '#E24B4A',
@@ -189,21 +188,8 @@ export function HomePage() {
 
   const device = devices.find((d) => d.id === activeId) ?? devices[0];
   const plant: Plant | null = device.plant ?? null;
-  const rawRing: RingStatus = verdict?.ring ?? 'ok';
-  // Cold-start mode disabled by product decision — fold into ok visually,
-  // BUT escalate to alert if any per-cell is alert. Otherwise critical
-  // conditions during the first 48 h hide behind a green ring.
-  const anyAlert = verdict?.perParam
-    ? Object.values(verdict.perParam).some((s) => s === 'alert')
-    : false;
-  const anyWarn = verdict?.perParam
-    ? Object.values(verdict.perParam).some((s) => s === 'warn')
-    : false;
-  const ringStatus: RingStatus = anyAlert
-    ? 'alert'
-    : rawRing === 'cold'
-      ? (anyWarn ? 'warn' : 'ok')
-      : rawRing;
+  // The backend ring already aggregates per-param severity (alert > warn > ok).
+  const ringStatus: RingStatus = verdict?.ring ?? 'ok';
   const title = plant?.name ?? device.name;
   const headline = headlineFor(ringStatus, verdict);
   const lowBattery = battery && (battery.estimate === 'low' || battery.estimate === 'critical');
@@ -230,7 +216,7 @@ export function HomePage() {
         >
           <BatteryIndicator estimate={battery.estimate} className="h-3.5 w-auto shrink-0" />
           <span className="text-xs text-neutral-600 dark:text-neutral-300 flex-1">
-            Заряд: {batteryLabel(battery.estimate).toLowerCase()} ({battery.voltage.toFixed(2)} В)
+            Заряд: {batteryLabel(battery.estimate).toLowerCase()}
           </span>
         </button>
       )}
@@ -450,7 +436,7 @@ function QuickStats({
     <div className="px-4 pt-3 pb-2 grid grid-cols-2 gap-x-3 gap-y-1.5 justify-items-center">
       <StatChip icon="droplet"     label="Полив"   value={formatAgoShort(lastWateringAt, 'never')} />
       <StatChip icon="broadcast"   label="Замер"   value={formatAgoShort(lastSeenAt, 'no-data')} />
-      <StatChip icon="info-circle" label="Батарея" value={battery ? batteryQuickLabel(battery) : '—'} />
+      <StatChip icon="info-circle" label="Батарея" value={battery ? batteryLabel(battery.estimate) : '—'} />
       <StatChip icon="wifi"        label="Wi-Fi"   value={wifiRssi != null ? wifiQuality(wifiRssi) : '—'} />
     </div>
   );
@@ -490,13 +476,6 @@ function formatAgoShort(iso: string | null, missingText: 'never' | 'no-data'): s
   if (hours < 24) return `${hours} ч`;
   const days = Math.floor(hours / 24);
   return `${days} д`;
-}
-
-function batteryQuickLabel(b: BatteryStatus): string {
-  // Map voltage onto a 0-100 % bar — 3.0 V is empty, 4.2 V is full. We keep
-  // the qualitative tier as suffix for context (low / mid / full).
-  const pct = Math.max(0, Math.min(100, Math.round(((b.voltage - 3.0) / 1.2) * 100)));
-  return `${pct}%`;
 }
 
 function Ring({ status }: { status: RingStatus }) {

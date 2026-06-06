@@ -11,8 +11,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 
 // Screen per docs/design-summary.html §device-management. Title = 4-char
 // uppercase prefix of Device.id ("A4F2"-style). Action set: re-pair Wi-Fi
-// (offline instructions), replace (parked — needs new provisioning flow),
-// unlink (DELETE with confirm).
+// (offline instructions), unlink (DELETE with confirm).
 
 interface Info {
   device: {
@@ -60,8 +59,6 @@ export function DeviceManagePage() {
   const [error, setError] = useState<string | null>(null);
   const [unlinkOpen, setUnlinkOpen] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
-  const [replaceOpen, setReplaceOpen] = useState(false);
-  const [replacing, setReplacing] = useState(false);
   const [repairOpen, setRepairOpen] = useState(false);
   const [repairQueueing, setRepairQueueing] = useState(false);
   const [repairQueued, setRepairQueued] = useState(false);
@@ -131,21 +128,6 @@ export function DeviceManagePage() {
     }
   };
 
-  const handleReplace = async () => {
-    if (!id) return;
-    setReplacing(true);
-    try {
-      const { device } = await api.replaceDevice(id);
-      // Pass the new device (with its deviceToken) via router state so the
-      // setup screen doesn't need an extra fetch.
-      navigate(`/devices/${device.id}/setup`, { replace: true, state: { device } });
-    } catch {
-      setReplacing(false);
-      setReplaceOpen(false);
-      setError('Не удалось заменить датчик');
-    }
-  };
-
   const handleQueueRepair = async () => {
     if (!id) return;
     setRepairQueueing(true);
@@ -195,11 +177,7 @@ export function DeviceManagePage() {
         <Row
           icon={<BatteryIndicator estimate={info.battery.estimate} className="h-4 w-auto" />}
           title="Аккумулятор"
-          subtitle={
-            info.battery.daysUntilCritical != null
-              ? `${info.battery.voltage.toFixed(2)} В · хватит ещё на ~${info.battery.daysUntilCritical} дн.`
-              : `${info.battery.voltage.toFixed(2)} В · прогноз появится после первой зарядки`
-          }
+          subtitle={`${info.battery.voltage.toFixed(2)} В`}
           trailing={<span className="text-sm font-medium">{batteryLabel(info.battery.estimate)}</span>}
         />
       )}
@@ -214,25 +192,18 @@ export function DeviceManagePage() {
       )}
 
       {info.device.firmwareVersion && (
-        <button
-          onClick={() => navigate(`/devices/${info.device.id}/firmware`)}
-          className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-neutral-50 dark:hover:bg-neutral-900"
-        >
-          <span className="text-xl text-neutral-500 flex-shrink-0">⚙</span>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm">Прошивка</div>
-            <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
-              {fwUpToDate
-                ? `${info.device.firmwareVersion} — актуальная версия`
-                : fwUpdateAvailable
-                  ? `${info.device.firmwareVersion} — доступна ${latestFw}`
-                  : info.device.firmwareVersion}
-            </div>
-          </div>
-          {fwUpToDate
-            ? <span className="text-status-ok text-lg">✓</span>
-            : <span className="text-neutral-400">›</span>}
-        </button>
+        <Row
+          icon={<span className="text-xl text-neutral-500">⚙</span>}
+          title="Прошивка"
+          subtitle={
+            fwUpToDate
+              ? `${info.device.firmwareVersion} — актуальная версия`
+              : fwUpdateAvailable
+                ? `${info.device.firmwareVersion} — доступна ${latestFw}, обновится сама`
+                : info.device.firmwareVersion
+          }
+          trailing={fwUpToDate ? <span className="text-status-ok text-lg">✓</span> : null}
+        />
       )}
 
       {/* Подключение */}
@@ -251,21 +222,8 @@ export function DeviceManagePage() {
         <span className="text-neutral-400">›</span>
       </button>
 
-      {/* Замена и удаление */}
-      <SectionLabel>Замена и удаление</SectionLabel>
-      <button
-        onClick={() => setReplaceOpen(true)}
-        className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-neutral-50 dark:hover:bg-neutral-900"
-      >
-        <span className="text-xl text-neutral-500 flex-shrink-0">⇄</span>
-        <div className="flex-1">
-          <div className="text-sm">Заменить датчик</div>
-          <div className="text-xs text-neutral-500 dark:text-neutral-400">
-            если этот сломался — настроим новый и перенесём историю
-          </div>
-        </div>
-        <span className="text-neutral-400">›</span>
-      </button>
+      {/* Удаление */}
+      <SectionLabel>Удаление</SectionLabel>
 
       <div className="border-t border-neutral-200 dark:border-neutral-800 mt-2">
         <button
@@ -291,22 +249,6 @@ export function DeviceManagePage() {
         onConfirm={handleUnlink}
         onCancel={() => setUnlinkOpen(false)}
         pending={unlinking}
-      />
-
-      <ConfirmDialog
-        open={replaceOpen}
-        tone="nominal"
-        iconSlot={<span className="text-2xl">⇄</span>}
-        title={`Заменить датчик ${idLabel}?`}
-        body={
-          info.plant
-            ? `Подключим новый датчик, перенесём на него историю «${info.plant.name}». Старый ${idLabel} отвяжется.`
-            : `Подключим новый датчик, перенесём на него всю историю. Старый ${idLabel} отвяжется.`
-        }
-        primaryLabel="Подключить новый"
-        onConfirm={handleReplace}
-        onCancel={() => setReplaceOpen(false)}
-        pending={replacing}
       />
 
       <ConfirmDialog
