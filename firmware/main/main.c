@@ -43,6 +43,10 @@
 // setup (1 connect/10 s) it's ~100 s. Either way: user noticed, intentional.
 #define WIFI_FAIL_LIMIT 10
 
+// First-connect validation: how many times we retry brand-new (unconfirmed)
+// creds back-to-back before giving up and dropping back into provisioning.
+#define FIRST_CONNECT_ATTEMPTS 5
+
 static const char *TAG = "zelenka";
 
 // Samples buffered in RTC slow memory across deep sleeps.
@@ -308,14 +312,15 @@ void app_main(void) {
         bool wifi_ok = (wifi_connect_blocking(cfg.wifi_ssid, cfg.wifi_password) == ESP_OK);
         if (!wifi_ok && cfg.unconfirmed) {
             // First connection on freshly-entered creds that have never worked.
-            // The user is standing by, so fail fast: retry up to WIFI_FAIL_LIMIT
-            // times back-to-back (each wifi_connect_blocking already does its own
-            // 5 internal retries / 30 s timeout) and, if none succeed, wipe and
-            // drop straight back into the captive portal so they can re-enter —
-            // instead of the slow hourly streak that only gives up after ~10 h
-            // and resets on every power-cycle.
-            for (int attempt = 2; !wifi_ok && attempt <= WIFI_FAIL_LIMIT; attempt++) {
-                ESP_LOGW(TAG, "first-connect attempt %d/%d failed; retrying", attempt - 1, WIFI_FAIL_LIMIT);
+            // The user is standing by, so fail fast: retry up to
+            // FIRST_CONNECT_ATTEMPTS times back-to-back (each
+            // wifi_connect_blocking already does its own 5 internal retries /
+            // 30 s timeout) and, if none succeed, wipe and drop straight back
+            // into the captive portal so they can re-enter — instead of the
+            // slow hourly streak that only gives up after ~10 h and resets on
+            // every power-cycle.
+            for (int attempt = 2; !wifi_ok && attempt <= FIRST_CONNECT_ATTEMPTS; attempt++) {
+                ESP_LOGW(TAG, "first-connect attempt %d/%d failed; retrying", attempt - 1, FIRST_CONNECT_ATTEMPTS);
                 vTaskDelay(pdMS_TO_TICKS(2000));
                 wifi_ok = (wifi_connect_blocking(cfg.wifi_ssid, cfg.wifi_password) == ESP_OK);
             }
