@@ -24,7 +24,7 @@ export type TriggerKind =
   | 'temp_red'
   | 'temp_drop';
 
-interface PlantCtx {
+export interface PlantCtx {
   id: string;
   userId: string;
   name: string;
@@ -48,7 +48,7 @@ export interface TrendSample {
   soilMoistureRaw: number | null;
 }
 
-interface MeasurementCtx {
+export interface MeasurementCtx {
   temperatureC: number | null;
   humidityPct: number | null;
   lux: number | null;
@@ -56,13 +56,13 @@ interface MeasurementCtx {
   measuredAt: Date;
 }
 
-interface QuietHours {
+export interface QuietHours {
   startMin: number | null;
   endMin: number | null;
   timezone: string;
 }
 
-function inQuietHours(now: Date, q: QuietHours): boolean {
+export function inQuietHours(now: Date, q: QuietHours): boolean {
   if (q.startMin == null || q.endMin == null) return false;
   const m = minutesOfDayInTz(now, q.timezone);
   // Windows that wrap midnight (e.g. 23:00 → 07:00) need OR; same-day uses AND.
@@ -71,7 +71,7 @@ function inQuietHours(now: Date, q: QuietHours): boolean {
     : m >= q.startMin || m <= q.endMin;
 }
 
-function copy(
+export function copy(
   kind: TriggerKind,
   plantName: string,
   thresholds: CareThresholds,
@@ -98,7 +98,7 @@ function copy(
   }
 }
 
-function detectTriggers(plant: PlantCtx, m: MeasurementCtx, newVerdict: Verdict): TriggerKind[] {
+export function detectTriggers(plant: PlantCtx, m: MeasurementCtx, newVerdict: Verdict): TriggerKind[] {
   const out: TriggerKind[] = [];
   const prev = plant.prevRingStatus;
 
@@ -133,7 +133,7 @@ function detectTriggers(plant: PlantCtx, m: MeasurementCtx, newVerdict: Verdict)
 // the comfort range. We need at least two prior samples to call it a trend.
 // Soil is inverted: high raw value = drier, so "improving" means values
 // decreasing.
-function isImprovingTrend(kind: TriggerKind, plant: PlantCtx): boolean {
+export function isImprovingTrend(kind: TriggerKind, plant: PlantCtx): boolean {
   const trend = plant.recentTrend;
   if (trend.length < 3) return false;
   const first = trend[0];
