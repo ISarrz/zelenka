@@ -28,7 +28,8 @@ type IconName =
   | 'lock'
   | 'arrow-right'
   | 'broadcast'
-  | 'mail';
+  | 'mail'
+  | 'pencil';
 
 interface Props extends SVGProps<SVGSVGElement> {
   name: IconName;
@@ -215,6 +216,13 @@ export function Icon({ name, size = 18, className, ...rest }: Props) {
         <svg {...common}>
           <rect x="3" y="5" width="18" height="14" rx="2" />
           <path d="M3 7l9 7 9-7" />
+        </svg>
+      );
+    case 'pencil':
+      return (
+        <svg {...common}>
+          <path d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4" />
+          <path d="M13.5 6.5l4 4" />
         </svg>
       );
   }

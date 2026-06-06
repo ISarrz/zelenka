@@ -206,6 +206,7 @@ export function HomePage() {
         onProfile={() => navigate('/settings')}
         onRename={() => { if (plant) setRenameOpen(true); }}
         title={title}
+        canRename={!!plant}
         showChevron={devices.length > 1}
       />
 
@@ -341,13 +342,14 @@ function headlineFor(ring: RingStatus, v: Verdict | null): string {
 }
 
 function Header({
-  onAdd, onPickPlant, onProfile, onRename, title, showChevron,
+  onAdd, onPickPlant, onProfile, onRename, title, canRename, showChevron,
 }: {
   onAdd: () => void;
   onPickPlant: () => void;
   onProfile: () => void;
   onRename: () => void;
   title: string;
+  canRename: boolean;
   showChevron: boolean;
 }) {
   return (
@@ -367,8 +369,17 @@ function Header({
         >
           {title}
         </button>
+        {canRename && (
+          <button
+            onClick={onRename}
+            aria-label="Переименовать растение"
+            className="text-neutral-400 dark:text-neutral-500 active:text-neutral-600 dark:active:text-neutral-300 shrink-0"
+          >
+            <Icon name="pencil" size={15} />
+          </button>
+        )}
         {showChevron && (
-          <button onClick={onPickPlant} aria-label="Выбрать растение" className="text-neutral-500">
+          <button onClick={onPickPlant} aria-label="Выбрать растение" className="text-neutral-500 shrink-0">
             <Icon name="chevron-down" size={16} />
           </button>
         )}
