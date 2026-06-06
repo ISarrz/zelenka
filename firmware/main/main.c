@@ -273,6 +273,10 @@ void app_main(void) {
 
     if (!cfg.present) {
         ESP_LOGI(TAG, "no provisioning — entering SoftAP captive portal");
+        // Make sure the post-provisioning boot runs the smoke-test burst (where
+        // first-connect validation lives), even if RTC RAM survived a prior
+        // working session (e.g. re-provision after a factory reset).
+        did_initial_burst = false;
         zelenka_led_set(ZELENKA_LED_PROVISIONING);  // solid white while we wait for creds
         provisioning_run();
         // provisioning_run never returns: a successful form submit calls
@@ -302,9 +306,25 @@ void app_main(void) {
         ESP_LOGI(TAG, "initial burst: 6 samples * 10s");
         zelenka_led_set(ZELENKA_LED_CONNECTING);  // blinking white while joining Wi-Fi
         bool wifi_ok = (wifi_connect_blocking(cfg.wifi_ssid, cfg.wifi_password) == ESP_OK);
+        if (!wifi_ok && cfg.unconfirmed) {
+            // First connection on freshly-entered creds that have never worked.
+            // The user is standing by, so fail fast: retry up to WIFI_FAIL_LIMIT
+            // times back-to-back (each wifi_connect_blocking already does its own
+            // 5 internal retries / 30 s timeout) and, if none succeed, wipe and
+            // drop straight back into the captive portal so they can re-enter —
+            // instead of the slow hourly streak that only gives up after ~10 h
+            // and resets on every power-cycle.
+            for (int attempt = 2; !wifi_ok && attempt <= WIFI_FAIL_LIMIT; attempt++) {
+                ESP_LOGW(TAG, "first-connect attempt %d/%d failed; retrying", attempt - 1, WIFI_FAIL_LIMIT);
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                wifi_ok = (wifi_connect_blocking(cfg.wifi_ssid, cfg.wifi_password) == ESP_OK);
+            }
+            if (!wifi_ok) drop_to_provisioning("first-connect");  // never returns
+        }
         if (wifi_ok) {
             zelenka_led_set(ZELENKA_LED_CONNECTED);  // green 10 s, then off
             wifi_fail_streak = 0;
+            if (cfg.unconfirmed) zelenka_cfg_mark_confirmed();  // creds proven good
             if (!time_synced) time_synced = sync_ntp_blocking();
         } else {
             if (++wifi_fail_streak >= WIFI_FAIL_LIMIT) drop_to_provisioning("burst");

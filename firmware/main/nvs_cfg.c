@@ -33,6 +33,9 @@ void zelenka_cfg_load(zelenka_cfg_t *out) {
     if (!load_str(h, NVS_KEY_API_URL, out->api_url, sizeof(out->api_url))) {
         strncpy(out->api_url, CONFIG_ZELENKA_API_URL, sizeof(out->api_url) - 1);
     }
+    int8_t unconfirmed = 0;
+    nvs_get_i8(h, NVS_KEY_UNCONFIRMED, &unconfirmed);  // absent → 0 (confirmed)
+    out->unconfirmed = (unconfirmed != 0);
     nvs_close(h);
     out->present = ok;
     ESP_LOGI(TAG, "cfg load: ssid=%s token=%s url=%s present=%d",
@@ -50,9 +53,20 @@ bool zelenka_cfg_store(const char *ssid, const char *pass, const char *token, co
     if (api_url && api_url[0]) {
         if (nvs_set_str(h, NVS_KEY_API_URL, api_url) != ESP_OK) ok = false;
     }
+    // Freshly-stored creds are unvalidated until a real connect succeeds.
+    if (nvs_set_i8(h, NVS_KEY_UNCONFIRMED, 1) != ESP_OK) ok = false;
     if (nvs_commit(h) != ESP_OK) ok = false;
     nvs_close(h);
     return ok;
+}
+
+void zelenka_cfg_mark_confirmed(void) {
+    nvs_handle_t h;
+    if (nvs_open(ZELENKA_NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_i8(h, NVS_KEY_UNCONFIRMED, 0);
+        nvs_commit(h);
+        nvs_close(h);
+    }
 }
 
 void zelenka_cfg_wipe(void) {

@@ -11,6 +11,11 @@
 #define NVS_KEY_WIFI_PASSWORD "wifi_pass"
 #define NVS_KEY_DEVICE_TOKEN  "dev_token"
 #define NVS_KEY_API_URL       "api_url"
+// Set to 1 by zelenka_cfg_store(); the freshly-entered creds have never been
+// validated against a real AP. Cleared on the first successful connect. While
+// set, the first-connect path fails fast back to provisioning if the creds
+// turn out to be wrong (see main.c). Absent (older NVS) → treated as confirmed.
+#define NVS_KEY_UNCONFIRMED   "unconfirmed"
 
 typedef struct {
     char wifi_ssid[33];
@@ -18,11 +23,14 @@ typedef struct {
     char device_token[64];
     char api_url[256];
     bool present;
+    bool unconfirmed;   // creds stored but not yet validated by a real connect
 } zelenka_cfg_t;
 
 void zelenka_cfg_load(zelenka_cfg_t *out);
 bool zelenka_cfg_store(const char *ssid, const char *pass, const char *token, const char *api_url);
 void zelenka_cfg_wipe(void);
+// Clear the "unconfirmed" flag after the first successful Wi-Fi connect.
+void zelenka_cfg_mark_confirmed(void);
 
 // Crash-report log lives in NVS namespace "zelenka_err" — separate from the
 // cfg namespace so it survives `zelenka_cfg_wipe()`. When the device boots
