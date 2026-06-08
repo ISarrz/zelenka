@@ -41,6 +41,13 @@ static void dns_task(void *arg) {
     socklen_t clen = sizeof(client);
     while (true) {
         int n = recvfrom(sock, buf, sizeof(buf), 0, (struct sockaddr *)&client, &clen);
+        // recvfrom blocks normally, but if the socket ever enters an error
+        // state it returns -1 immediately. Without a yield, `continue` here
+        // turns this prio-5 loop into a busy-spin that starves the idle task
+        // on CPU0 → TASK_WDT (5 s) fires → crash-boot wipes creds → SoftAP →
+        // it hangs again → loop. Seen in the field as ~21k TASK_WDT reboots
+        // ("горит белым, не подключается"). Back off on error so we yield.
+        if (n < 0) { vTaskDelay(pdMS_TO_TICKS(100)); continue; }
         if (n < 12) continue;
         // Make a minimal answer: copy ID + flags, set as response, 1 answer, point to
         // 192.168.4.1 with TTL 60. Keep question intact.
