@@ -34,9 +34,11 @@ void zelenka_cfg_mark_confirmed(void);
 
 // Crash-report log lives in NVS namespace "zelenka_err" — separate from the
 // cfg namespace so it survives `zelenka_cfg_wipe()`. When the device boots
-// after a panic/watchdog/brownout we save the reset_reason here, wipe creds,
-// drop into SoftAP. On the next successful POST after re-provisioning we
-// include this record and then clear it.
+// after a panic/watchdog/brownout we save the reset_reason here and bump
+// `count` (the consecutive-crash streak). Only after several crashes in a row
+// with no successful upload does the boot path wipe creds and drop into SoftAP
+// (see CRASH_PROVISION_THRESHOLD in main.c). The next successful POST includes
+// this record and then clears it (count back to 0).
 #define ZELENKA_ERR_NAMESPACE "zelenka_err"
 #define ZELENKA_ERR_FW_MAX    32
 

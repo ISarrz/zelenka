@@ -47,6 +47,16 @@
 // creds back-to-back before giving up and dropping back into provisioning.
 #define FIRST_CONNECT_ATTEMPTS 5
 
+// Consecutive crash-boots (panic / watchdog / brownout) with no successful POST
+// in between before we wipe creds and drop to SoftAP. A SINGLE transient
+// watchdog or a momentary brownout (battery sag) must NOT destroy working
+// creds: older firmware wiped on the very first crash, so any one-off fault
+// forced a re-provision and — combined with a crash inside provisioning — a
+// self-sustaining reboot loop (tens of thousands of TASK_WDT reboots seen in
+// the field). Below the threshold we keep creds and continue a normal boot;
+// the next good upload clears the counter.
+#define CRASH_PROVISION_THRESHOLD 3
+
 static const char *TAG = "zelenka";
 
 // Samples buffered in RTC slow memory across deep sleeps.
@@ -247,20 +257,31 @@ void app_main(void) {
     zelenka_led_init();
     zelenka_led_set(ZELENKA_LED_BOOT);
 
-    // Crash report: if we got here from a panic / watchdog / brownout, save
-    // it to a separate NVS namespace (survives cfg wipe), then wipe Wi-Fi
-    // creds so we drop into SoftAP automatically. The user re-provisions;
-    // the first POST after reconnect carries the saved error and clears it.
+    // Crash report: if we got here from a panic / watchdog / brownout, record
+    // it in a separate NVS namespace (survives cfg wipe). We only wipe creds and
+    // force provisioning once we've crashed CRASH_PROVISION_THRESHOLD times in a
+    // row WITHOUT a successful upload in between — `count` is exactly that streak
+    // (cleared by zelenka_err_clear on the first good POST). A lone transient
+    // fault falls through to a normal boot with creds intact; the next good POST
+    // both reports and clears the streak. This bounds the old wipe-on-first-crash
+    // behaviour that turned any single fault into a forced re-provision / loop.
     esp_reset_reason_t reason = esp_reset_reason();
     const esp_app_desc_t *boot_desc = esp_app_get_description();
     const char *boot_fw = boot_desc ? boot_desc->version : "";
     if (reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT ||
         reason == ESP_RST_TASK_WDT || reason == ESP_RST_WDT ||
         reason == ESP_RST_BROWNOUT) {
-        ESP_LOGW(TAG, "crash boot (reason=%d) — saving error, dropping to provisioning", (int)reason);
         zelenka_err_save((int)reason, boot_fw);
-        zelenka_cfg_wipe();
-        esp_restart();
+        zelenka_err_t e;
+        zelenka_err_load(&e);
+        if (e.count >= CRASH_PROVISION_THRESHOLD) {
+            ESP_LOGW(TAG, "crash boot (reason=%d), %d in a row — wiping creds, dropping to provisioning",
+                     (int)reason, e.count);
+            zelenka_cfg_wipe();
+            esp_restart();
+        }
+        ESP_LOGW(TAG, "crash boot (reason=%d), streak %d/%d — keeping creds, continuing normal boot",
+                 (int)reason, e.count, CRASH_PROVISION_THRESHOLD);
     }
 
     // Fresh power cycle: reset RTC-RAM transients so the smoke-test burst
